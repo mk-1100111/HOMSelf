@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOMSelf</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./main.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+        <a class="navbar-brand" href="index.html" id="homebt">HOMSelf</a>
+        <ul class="nav justify-content-center">
+            <li class="nav-item">
+            <a class="navbar-brand" aria-current="page">매니저를 선택하세요</a>
+            </li>       
+        </ul>
+        <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasDarkNavbar" aria-controls="offcanvasDarkNavbar" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="offcanvas offcanvas-end text-bg-dark" tabindex="-1" id="offcanvasDarkNavbar" aria-labelledby="offcanvasDarkNavbarLabel">
+            <div class="offcanvas-header">
+            <h5 class="offcanvas-title" id="offcanvasDarkNavbarLabel">관리자 모드</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body">
+            <form class="d-flex mt-3" role="search">            
+                <button class="btn btn-danger" type="submit">관리자로그인</button>
+            </form>
+            </div>        
+        </div>
+        </div>
+    </nav>
+    
+    <div class="row row-cols-3 row-cols-md-3 g-2" id="manager-lists">
+    </div>
+      
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.min.js" integrity="sha384-Rx+T1VzGupg4BHQYs2gCW9It+akI2MM/mndMCy36UVfodzcJcF0GGLxZIzObiEfa" crossorigin="anonymous"></script>
+    <script>
+        $(document).ready(function(){
+            manager_list = [
+            "고지훈", "구자원", "구재화", "권석천", "권성영", "권필중", "김대교", "김대선", "김동민", "김승준", "김영광", "김유빈", "김해원", "김홍렬", "민천의", "방기영", "백광융", "서동국", "서동재", "신동경", "안종훈", "유정모", "육강심", "윤학용", "이상운", "이상칠", "이성주", "이인욱", "이창규", "이흥준", "임규열", "임정우", "장민수", "장현숙", "정대성", "정윤정", "정준권", "조준희", "최승철", "최승현", "추우영", "한신희"
+            ]
+            for(let i=0; i<manager_list.length; i++){
+                let card = `
+                <div class="col">
+                    <div class="card h-100">
+                        <img src="./static/img/manager_list/${manager_list[i]}.jpg" class="card-img-top" style="height: 100%;" onclick="showMaterialList('${manager_list[i]}')">
+                        <div class="card-body text-center">
+                            <h4 class="card-title text-center">${manager_list[i]}</h4>
+                        </div>
+                    </div>
+                </div>
+                `
+                $("#manager-lists").append(card)
+            }
+        })
+    </script>
+    <script>
+        function showMaterialList(managerName) {
+            // 이미지 이름을 encodeURIComponent를 사용하여 URL에 안전하게 전달
+            let encodedManagerName = encodeURIComponent(managerName);
+            // 새 페이지로 이동하면서 이미지 이름을 URL 파라미터로 전달
+            window.location.href = `./material_list.html?managerName=${encodedManagerName}`;
+        }
+    </script>
+</body>
+</html>

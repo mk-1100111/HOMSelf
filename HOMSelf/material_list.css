@@ -1,0 +1,59 @@
+body {
+    
+    font-family: 'Jua', sans-serif;
+    font-weight: 400;
+    font-style: normal;
+    
+}
+
+
+#modal-cart-list {
+
+    margin-top: 2%;
+    margin-bottom: 2%;
+    text-align: center;
+
+}
+
+#material-lists {
+    margin-top: 60px;
+    margin-left: 0.5%;
+    margin-right: 0.5%;
+    margin-bottom: 285px;
+}
+
+#sendbtn {
+
+    text-align: right;
+
+}
+
+#cart-items {
+    text-align: center;
+    height: 140px;
+    width: 50%;
+    align-self: center;
+}
+
+#cart-container{
+    text-align: center;
+}
+
+.cart-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    
+}
+
+.cart-button {
+    margin-right: 5px;
+}
+
+.cart-text {
+    flex-grow: 1;
+}
+
+button .badge {
+    margin-left: -8px; /* Adjust as needed */
+}
