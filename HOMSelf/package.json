@@ -1,0 +1,17 @@
+{
+  "name": "homs-elf",
+  "version": "1.0.0",
+  "description": "HNS시흥지점 HOMS 자동화시스템",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "1100111 김무경",
+  "license": "ISC",
+  "dependencies": {
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "supervisor": "^0.12.0"
+  }
+}
