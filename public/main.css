@@ -1,0 +1,29 @@
+body {
+    font-family: 'Jua', sans-serif;
+    font-weight: 400;
+    font-size: 150%;
+    font-style: normal;
+
+}
+
+#modal-cart-list{
+    font-size: 120%;
+}
+
+.navbar {
+    height: 8%;
+}
+
+.navbar-brand,
+.navbar-toggler-icon,
+.navbar-brand,
+.nav-item,
+.btn {
+    font-size: 120%;
+}
+
+#manager-lists {
+    margin-top: 15%;
+    margin-left: 0.5%;
+    margin-right: 0.5%;
+}

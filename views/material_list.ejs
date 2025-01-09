@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOMSelf</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="/public/material_list.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            
+            <a class="navbar-brand" href="/main" id="backbtn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-backspace" viewBox="0 0 16 16">
+                    <path d="M5.83 5.146a.5.5 0 0 0 0 .708L7.975 8l-2.147 2.146a.5.5 0 0 0 .707.708l2.147-2.147 2.146 2.147a.5.5 0 0 0 .707-.708L9.39 8l2.146-2.146a.5.5 0 0 0-.707-.708L8.683 7.293 6.536 5.146a.5.5 0 0 0-.707 0z"/>
+                    <path d="M13.683 1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7.08a2 2 0 0 1-1.519-.698L.241 8.65a1 1 0 0 1 0-1.302L5.084 1.7A2 2 0 0 1 6.603 1zm-7.08 1a1 1 0 0 0-.76.35L1 8l4.844 5.65a1 1 0 0 0 .759.35h7.08a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/>
+                  </svg>
+            </a>
+            <ul class="nav justify-content-center">
+                <li class="nav-item">
+                    <a class="navbar-brand" aria-current="page" id="welcome-ms"> </a>
+                </li>       
+            </ul>
+            <button class="btn btn-dark position-relative" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasBottom" aria-controls="offcanvasBottom">
+                <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-bag" viewBox="0 0 16 16">
+                    <path d="M8 1a2.5 2.5 0 0 1 2.5 2.5V4h-5v-.5A2.5 2.5 0 0 1 8 1m3.5 3v-.5a3.5 3.5 0 1 0-7 0V4H1v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4zM2 5h12v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/>
+                </svg>
+                <span id="cart-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"></span>
+            </button>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="row row-cols-2 row-cols-md-3 g-2" id="material-lists"></div>
+    </div>
+
+    <div class="offcanvas offcanvas-bottom" data-bs-backdrop="false" data-bs-scroll="true" tabindex="-1" id="offcanvasBottom" aria-labelledby="offcanvasBottomLabel">
+        <div class="offcanvas-header">
+            <h4 class="offcanvas-title" id="offcanvasBottomLabel">List</h4>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body small">
+            <div class="cart-container" id="cart-container">
+                <div id="cart-items" class="cart-items"></div>
+            </div>
+            <div class="confirmation-button-container">
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#staticBackdrop">
+                    확인
+                </button>
+            </div>
+        </div>
+        
+        
+    </div>
+    <div class="modal fade" id="staticBackdrop" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+        <div class="modal-dialog justify-content-center align-items-center">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-1" id="staticBackdropLabel"></h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div> 
+                <div id="modal-cart-list"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">NO</button>
+                    <button type="button" class="btn btn-primary" onclick="sendCart()">가져가기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+  
+
+    
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.min.js" integrity="sha384-Rx+T1VzGupg4BHQYs2gCW9It+akI2MM/mndMCy36UVfodzcJcF0GGLxZIzObiEfa" crossorigin="anonymous"></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+
+    <script>
+        let countdownInterval; 
+    
+        function startCountdown() {
+            let count = 4;
+    
+            let countdownElement = document.createElement("div");
+            countdownElement.id = "countdown";
+            countdownElement.style.position = "fixed";
+            countdownElement.style.top = "50%"; 
+            countdownElement.style.left = "50%"; 
+            countdownElement.style.transform = "translate(-50%, -50%)"; 
+            countdownElement.style.padding = "10px";
+            countdownElement.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+            countdownElement.style.color = "#ffffff";
+            countdownElement.style.borderRadius = "5px";
+            countdownElement.style.zIndex = "9999";
+            document.body.appendChild(countdownElement);
+    
+            countdownInterval = setInterval(function() {
+                count--;
+                countdownElement.innerText = count + "초 후 메인으로 돌아갑니다";
+                if (count <= 0) {
+                    clearInterval(countdownInterval);
+                    redirectToMain();
+                    
+                    countdownElement.parentNode.removeChild(countdownElement);
+                }
+            }, 1000);
+        }
+    
+        function startInactivityTimer() {
+            timeoutId = setTimeout(startCountdown, 10000); 
+        }
+    
+        function resetInactivityTimer() {
+            clearTimeout(timeoutId);
+            startInactivityTimer();
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+
+            let countdownElement = document.getElementById("countdown");
+            if (countdownElement) {
+                countdownElement.parentNode.removeChild(countdownElement);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            startInactivityTimer();
+        });
+
+        document.addEventListener("mousemove", resetInactivityTimer);
+        document.addEventListener("keydown", resetInactivityTimer);
+        document.addEventListener("click", resetInactivityTimer);
+        document.addEventListener("scroll", resetInactivityTimer);
+        document.addEventListener("touchstart", resetInactivityTimer);
+        document.addEventListener("touchend", resetInactivityTimer);
+        document.addEventListener("touchmove", resetInactivityTimer);
+    
+        function redirectToMain() {
+            
+            window.location.href = "/main";
+        }
+
+        $(document).ready(function() {
+            function getManagerNameFromURL() {
+                let currentURL = window.location.href;
+                let queryString = currentURL.split('?')[1];
+                if (queryString) {
+                    let parameters = queryString.split('&');
+                    for (let parameter of parameters) {
+                        let [name, value] = parameter.split('=');
+                        if (name === 'managerName') {
+                            return decodeURIComponent(value);
+                        }
+                    }
+                }
+                return '';
+            }
+        
+            let managerName = getManagerNameFromURL();
+            $("#welcome-ms").text(`${managerName} 매니저님, 환영합니다!`);
+            $("#staticBackdropLabel").text(`${managerName} 매니저님 불출내역`);
+        });
+
+        let material_list = [
+                {"material_code":"10000025082", "material_name":"UTP 케이블 300m", "material_unit":"1"},
+                {"material_code":"10000079121", "material_name":"UTP 케이블 100m", "material_unit":"1"},
+                {"material_code":"10000079870", "material_name":"동축케이블(검정)", "material_unit":"1"},
+                {"material_code":"2015007", "material_name":"동축케이블(아이보리)", "material_unit":"1"},
+                {"material_code":"6601000174", "material_name":"RJ45", "material_unit":"1"},
+                {"material_code":"6601000045", "material_name":"심선접속자(젤타입)", "material_unit":"200"},
+                {"material_code":"10000018792", "material_name":"동축커넥터", "material_unit":"1"},
+                {"material_code":"6601000049", "material_name":"2Way 분배기", "material_unit":"1"},
+                {"material_code":"10000065485", "material_name":"타카심", "material_unit":"1"},
+                {"material_code":"10000072143", "material_name":"벨크로 타이", "material_unit":"1"},
+                {"material_code":"10000079021", "material_name":"바인드선", "material_unit":"1"},
+                {"material_code":"10000063369", "material_name":"드랍 광케이블", "material_unit":"1"},
+                {"material_code":"10000025613", "material_name":"드랍 편단 30m", "material_unit":"1"},
+                {"material_code":"10000025615", "material_name":"드랍 편단 40m", "material_unit":"1"},
+                {"material_code":"6600201212", "material_name":"현장조립형 광커넥터", "material_unit":"10"}, 
+                {"material_code":"6600200787", "material_name":"광어댑터", "material_unit":"1"},
+                {"material_code":"6601000041", "material_name":"I커플러", "material_unit":"1"},
+                {"material_code":"2115170", "material_name":"8Way 분배기", "material_unit":"1"},
+                {"material_code":"10000060722", "material_name":"5C 인식표", "material_unit":"100"},
+                {"material_code":"2316603", "material_name":"CATV 인식표", "material_unit":"100"},
+                {"material_code":"10000060836", "material_name":"FTTx 인식표", "material_unit":"100"},
+                {"material_code":"10000062238", "material_name":"HDMI 컨버터", "material_unit":"1"},
+                {"material_code":"10000068905", "material_name":"HDMI to 컴포넌트", "material_unit":"1"},
+                {"material_code":"1000065119", "material_name":"HDMI 케이블", "material_unit":"1"},
+                {"material_code":"6602300007", "material_name":"HFC부대 고정못", "material_unit":"1"},
+                {"material_code":"6601000039", "material_name":"RJ11", "material_unit":"1"},
+                {"material_code":"10000078747", "material_name":"UTP 케이블 고정못", "material_unit":"1"},
+                {"material_code":"10000074062", "material_name":"UTP 패치코드", "material_unit":"1"},
+                {"material_code":"10000078444", "material_name":"GiGA PoE 패치코드", "material_unit":"1"},
+                {"material_code":"10000043188", "material_name":"락부트(빨강)", "material_unit":"1"},
+                {"material_code":"10000043185", "material_name":"락부트(회색)", "material_unit":"1"},
+                {"material_code":"2318322", "material_name":"직결피스(와샤)", "material_unit":"1000"},
+                {"material_code":"2219129", "material_name":"브라켓(미니ONU용)", "material_unit":"1"},
+                {"material_code":"6601000197", "material_name":"스펜클램프", "material_unit":"10"},
+                {"material_code":"6602300009", "material_name":"인입클램프", "material_unit":"10"},
+                {"material_code":"10000000067", "material_name":"절연테이프", "material_unit":"1"},
+                {"material_code":"6601000094", "material_name":"점퍼선", "material_unit":"300"},
+                {"material_code":"6600201041", "material_name":"JJ", "material_unit":"100"},
+                {"material_code":"2117464", "material_name":"케이블 타이", "material_unit":"100"},
+                {"material_code":"6601000044", "material_name":"전화선", "material_unit":"1"}
+
+
+                
+            ];
+
+        $(document).ready(function(){
+
+            
+            for(let i=0; i<material_list.length; i++){
+                let card = `
+                <div class="col">
+                    <div class="card h-100" onclick="addToCart('${material_list[i].material_name}')">
+                        <img src="public/static/img/material_list/${material_list[i].material_name}.jpg" class="card-img-top" style="height: 100%;">
+                        <div class="card-body text-center">
+                            <h4 class="card-title text-center">${material_list[i].material_name}</h4>
+                        </div>
+                    </div>
+                </div>
+                `
+                $("#material-lists").append(card);
+            }
+        });
+
+        var minusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-dash-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/> </svg>';
+        
+        var plusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/> </svg>';
+
+        var cartQuantities = {};        
+
+        function addToCart(name) {
+            
+            if (cartQuantities[name]) {
+                cartQuantities[name]++;
+            } else {
+                cartQuantities[name] = 1;
+            }
+            
+            updateCart();
+        }
+
+        function removeFromCart(name) {
+            delete cartQuantities[name];
+            updateCart();
+        }
+        
+        function updateCart() {
+            var cartItemsElement = document.getElementById("cart-items");
+            cartItemsElement.innerHTML = ""; 
+            cartItemsElement.style.display = "block";
+
+            var modalCartListElement = document.getElementById("modal-cart-list");
+            modalCartListElement.innerHTML = "";
+
+            Object.keys(cartQuantities).forEach(function (name, index, array) {
+                var cartItemDiv = document.createElement("div");
+                cartItemDiv.classList.add("cart-item");
+
+                var buttonContainer = document.createElement("div");
+                buttonContainer.classList.add("button-container");
+                
+                var delButton = document.createElement("button");
+                delButton.innerText = "삭제";
+                delButton.classList.add("btn", "btn-danger");
+                delButton.style.cursor = "pointer";
+                delButton.style.fontSize = "40%";
+                delButton.onclick = function () {
+                    delete cartQuantities[name];
+                    removeFromCart(name);
+                    updateCart();
+                };
+
+                var plusButton = document.createElement("div");
+                plusButton.innerHTML = plusIcon;
+                plusButton.classList.add("cart-button");
+                plusButton.style.cursor = "pointer";
+                plusButton.onclick = function () {
+                    cartQuantities[name]++;
+                    updateCart();
+                };
+
+                var minusButton = document.createElement("div");
+                minusButton.innerHTML = minusIcon;
+                minusButton.classList.add("cart-button");
+                minusButton.style.cursor = "pointer";
+                minusButton.onclick = function () {
+                    cartQuantities[name] = Math.max(0, cartQuantities[name] - 1);
+                    if (cartQuantities[name] === 0) {
+                        removeFromCart(name);
+                    }
+                    updateCart();
+                };
+
+                var textElement = document.createElement("span");
+                textElement.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;
+                textElement.classList.add("cart-text");
+
+                cartItemDiv.appendChild(delButton);
+                cartItemDiv.appendChild(textElement);
+                buttonContainer.appendChild(plusButton);
+                buttonContainer.appendChild(minusButton);
+                cartItemDiv.appendChild(buttonContainer);
+                cartItemsElement.appendChild(cartItemDiv);
+
+                var modalCartItem = document.createElement("div");
+                modalCartItem.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;
+                modalCartListElement.appendChild(modalCartItem);
+
+                
+                if (index === array.length - 1) {
+                    cartItemDiv.scrollIntoView({ behavior: 'smooth' });
+                    
+                }
+            });
+
+            var offcanvasBottom = new bootstrap.Offcanvas(document.getElementById("offcanvasBottom"));
+            offcanvasBottom.show();
+
+            var sendButton = document.getElementById("sendbtn");
+            
+            updateBadge();
+        }
+
+
+        function updateBadge() {
+            var totalItems = Object.values(cartQuantities).reduce((acc, val) => acc + val, 0);
+            var badgeElement = document.getElementById("cart-badge");
+            badgeElement.innerText = totalItems > 0 ? (totalItems > 99 ? "99+" : totalItems.toString()) : "";
+            badgeElement.style.display = totalItems > 0 ? "inline" : "none";
+        }
+
+        function getManagerNameFromURL() {
+            let currentURL = window.location.href;
+            let queryString = currentURL.split('?')[1];
+            if (queryString) {
+                let parameters = queryString.split('&');
+                for (let parameter of parameters) {
+                    let [name, value] = parameter.split('=');
+                    if (name === 'managerName') {
+                        return decodeURIComponent(value);
+                    }
+                }
+            }
+            return '';
+        }
+        
+        var cartData = [];
+
+        function sendCart() {
+            var managerName = getManagerNameFromURL();
+            
+            Object.keys(cartQuantities).forEach(function (name) {
+                var matchedItem = material_list.find(function (item) {
+                    return item.material_name === name;
+                });
+
+                if (matchedItem) { 
+                    var itemData = {
+                        material_code: matchedItem.material_code,
+                        manager_name: managerName,
+                        quantity: cartQuantities[name] * matchedItem.material_unit
+                    };
+
+                    cartData.push(itemData);
+                }
+            });
+            
+            // console.log(cartData);
+            // writeDataToSheet(cartData)
+            window.location.href = "/";
+        }
+
+
+        function getCookie(name) {
+            var cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        
+        const CLIENT_ID = '246814509011-6o1292hovrg70sr3q9ll74btnc2av06h.apps.googleusercontent.com';
+        const API_KEY = 'AIzaSyDquN0B_Wa4Ok27t9dl9hrpJtulMweeGQs';
+        const DISCOVERY_DOCS = ["https://sheets.googleapis.com/$discovery/rest?version=v4"];
+        const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+        function handleClientLoad() {
+            gapi.load('client:auth2', initClient);
+        }
+
+        function initClient() {
+            gapi.client.init({
+                apiKey: API_KEY,
+                clientId: CLIENT_ID,
+                discoveryDocs: DISCOVERY_DOCS,
+                scope: SCOPES
+            }).then(() => {
+                console.log('Google Sheets API initialized');
+            }).catch(error => {
+                console.error('Error initializing Google Sheets API:', error);
+            });
+        }
+
+        async function writeDataToSheet(data) {
+            const values = [data];
+
+            try {
+                await gapi.auth2.getAuthInstance().signIn();
+                const response = await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: '18rvJ-rP-E6s8VqriaJwPboJZiFK68f8f35JNrzNrYbM',
+                    range: 'log!A1',
+                    valueInputOption: 'USER_ENTERED',
+                    resource: { values }
+                });
+                console.log('Data written to sheet:', response);
+            } catch (error) {
+                console.error('Error writing data to sheet:', error);
+            }
+        }
+
+        let touchStartTime;
+        let isDragging = false;
+
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+
+        document.addEventListener('touchstart', function(event) {
+            touchStartTime = new Date().getTime();
+            isDragging = false;
+        });
+
+        document.addEventListener('touchmove', function(event) {
+            isDragging = true;
+        });
+
+        document.addEventListener('touchend', function(event) {
+            let touchEndTime = new Date().getTime();
+            let touchDuration = touchEndTime - touchStartTime;
+
+            if (!isDragging && touchDuration > 300) {
+            
+                event.preventDefault();
+                event.target.click();
+            }
+        });
+
+        
+    </script>
+
+    
+</body>
+</html>

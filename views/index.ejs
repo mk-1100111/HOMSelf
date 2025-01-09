@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        body {
+            text-align: center;
+            margin: 0; 
+        }
+
+        .container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .container img {
+            max-height: 95vh;
+            width: auto; 
+            cursor: pointer; 
+            object-fit: cover;            
+        }
+
+        .text-overlay {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 30px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/main">
+            <img id="clickableImage" src="public/static/img/main2.gif">
+            <div class="text-overlay">전송을 완료했습니다</div>
+        </a>
+    </div>
+
+    <script>
+        let touchStartTime;
+        let isDragging = false;
+
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+
+        document.addEventListener('touchstart', function(event) {
+            touchStartTime = new Date().getTime();
+            isDragging = false;
+        });
+
+        document.addEventListener('touchmove', function(event) {
+            isDragging = true;
+        });
+
+        document.addEventListener('touchend', function(event) {
+            let touchEndTime = new Date().getTime();
+            let touchDuration = touchEndTime - touchStartTime;
+
+            if (!isDragging && touchDuration > 300) {
+                event.preventDefault();
+                event.target.click();
+            }
+        });
+
+        setTimeout(function() {
+            document.getElementById('clickableImage').click();
+        }, 3000);
+    </script>
+</body>
+</html>
