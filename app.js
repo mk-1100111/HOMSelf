@@ -1,24 +1,28 @@
-
 const express = require('express');
-// const helmet = require('helmet');
+const ejs = require('ejs');
+const path = require('path');
 
 const app = express();
-const ejs = require('ejs')
 
+// Koyeb에서 제공하는 PORT 환경 변수를 사용 (기본값: 3000)
+const PORT = process.env.PORT || 3000;
+
+// EJS 설정
 app.set('view engine', 'ejs');
-app.set('views', './views');
-app.use('/public/', express.static(__dirname + '/public'));
+app.set('views', path.join(__dirname, 'views'));
 
-// app.use(helmet());
+// 정적 파일 경로 설정
+app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// Body-parser 대체 (express 내장 기능 사용)
 app.use(express.json());
-app.use(express.urlencoded());
+app.use(express.urlencoded({ extended: true }));
 
+// 라우터 설정
+const mainRouter = require('./router/mainRouter');
+app.use('/', mainRouter);
 
-const mainRouter = require('./router/mainRouter')
-app.use('/', mainRouter)
-
-
-app.listen(3000, function(req,res){
-    console.log('서버 실행')
-})
-
+// 서버 실행
+app.listen(PORT, () => {
+  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+});
