@@ -19,7 +19,8 @@ body {
 }
 
 .confirmation-button-container {
-    margin-left:80%;
+    max-width: 799px; /* 동일한 너비 제한 */
+    /* margin-left:80%; */
     width: 20%;
     text-align: right; /* 버튼을 오른쪽 정렬 */
     padding: 10px 20px; /* 상하 패딩과 좌우 패딩 추가 */
@@ -29,7 +30,6 @@ body {
     left: 0; /* 왼쪽 경계 설정 */
     /* z-index: 999; 다른 컨텐츠 위에 표시되도록 z-index 설정 */
 }
-
 
 
 .cart-button {
