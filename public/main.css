@@ -35,3 +35,12 @@ body {
     margin-left: 0.5%;
     margin-right: 0.5%;
 }
+
+.modal-content {
+    position: fixed; 
+    top: 35%; /* 화면의 50% 지점 */
+    left: 50%; /* 화면의 50% 지점 */
+    transform: translate(-50%, -50%); /* 가로/세로 중심 이동 */
+    margin: 0; /* 여백 제거 */
+    z-index: 1050; /* 다른 요소 위에 표시 */
+}
