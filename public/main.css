@@ -4,12 +4,12 @@ body {
     font-size: 150%;
     font-style: normal;
     margin: 0 auto;
-    max-width: 1339px; 
+    max-width: 799px; 
 
 }
 
 .container-fluid {
-    max-width: 1339px;
+    max-width: 799px;
     margin: 0 auto;
 }
 
