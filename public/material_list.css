@@ -32,7 +32,6 @@ body {
 
 
 
-
 .cart-button {
     display: flex;
     justify-content: flex-end; /* 버튼을 오른쪽 끝으로 정렬 */
@@ -113,4 +112,11 @@ body {
 
 button .badge {
     margin-left: -8px; /* Adjust as needed */
+}
+
+.modal-dialog {
+    display: flex;
+    align-items: center; /* 세로 중앙 정렬 */
+    justify-content: center; /* 가로 중앙 정렬 */
+    height: 100%; /* 모달 높이를 전체 화면 높이에 맞춤 */
 }
