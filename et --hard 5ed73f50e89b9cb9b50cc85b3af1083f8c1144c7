@@ -1,0 +1,83 @@
+[33mcommit 3c7e0623cf0dc871330564c9d483b5bf83f21f76[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m
+Author: MK <mukyung@sk.com>
+Date:   Wed Jan 15 11:26:33 2025 +0900
+
+    cart pixed
+
+[33mcommit 5ed73f50e89b9cb9b50cc85b3af1083f8c1144c7[m
+Author: MK <mukyung@sk.com>
+Date:   Wed Jan 15 11:16:04 2025 +0900
+
+    max width 799
+
+[33mcommit 8b25daccff66b0e87ddd685c39322b04ecca5ae5[m
+Author: MK <mukyung@sk.com>
+Date:   Wed Jan 15 11:08:49 2025 +0900
+
+    max width 1339
+
+[33mcommit ec3ea7d85e156ad8a4aed88639ca570a1b439c36[m
+Author: MK <mukyung@sk.com>
+Date:   Tue Jan 14 17:16:28 2025 +0900
+
+    add material
+
+[33mcommit cd684d1f57e3c80ef81577579e733a92d2fb8b11[m
+Author: MK <mukyung@sk.com>
+Date:   Tue Jan 14 08:35:24 2025 +0900
+
+    random img
+
+[33mcommit 213ff318ec087b38e08ce372503aa09c6d4b5fb1[m
+Author: MK <mukyung@sk.com>
+Date:   Mon Jan 13 10:09:10 2025 +0900
+
+    index style change
+
+[33mcommit 171b782ab52f0b98ff05af382d9d4feb9f7c6b76[m
+Author: MK <mukyung@sk.com>
+Date:   Mon Jan 13 10:00:31 2025 +0900
+
+    main img change
+
+[33mcommit 83eb856594fc12f4ec4a899781a12c8f5366d6c3[m
+Author: MK <mukyung@sk.com>
+Date:   Thu Jan 9 18:45:32 2025 +0900
+
+    Rename: HDMI to 컴버넌트.jpg to HDMI to 컴포넌트.jpg
+
+[33mcommit ff055e57f0ca479b0df0237c0ca487bad52e1247[m
+Author: MK <mukyung@sk.com>
+Date:   Thu Jan 9 18:14:53 2025 +0900
+
+    Fix: Use dynamic PORT and improve app.js structure
+
+[33mcommit dc10a63aaf1435c25b6931d36aa1995dcaf0c001[m
+Author: MK <mukyung@sk.com>
+Date:   Thu Jan 9 18:03:41 2025 +0900
+
+    Add Procfile to define app run command
+
+[33mcommit 3e9f5b2223f4cf171721abfe1761fd42924927d6[m
+Author: MK <mukyung@sk.com>
+Date:   Thu Jan 9 17:48:57 2025 +0900
+
+    Remove google.json file
+
+[33mcommit 9fe95b13177de225ab750214b932c23add1a3d60[m
+Author: MK <mukyung@sk.com>
+Date:   Thu Jan 9 17:42:46 2025 +0900
+
+    Restructure: Remove HOMSelf folder and move files to root
+
+[33mcommit ea46e0125cfb7afbc326ac67a915d4436460988f[m
+Author: MuKyung KIM <mukyung@sk.com>
+Date:   Thu Feb 22 18:21:52 2024 +0900
+
+    2nd commit
+
+[33mcommit ccf49974d28689dbc271ab8eeb09a5512e9b6263[m
+Author: MuKyung KIM <mukyung@sk.com>
+Date:   Wed Feb 21 14:54:00 2024 +0900
+
+    first commit
