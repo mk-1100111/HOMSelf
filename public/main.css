@@ -3,8 +3,16 @@ body {
     font-weight: 400;
     font-size: 150%;
     font-style: normal;
+    margin: 0 auto;
+    max-width: 1339px; 
 
 }
+
+.container-fluid {
+    max-width: 1339px;
+    margin: 0 auto;
+}
+
 
 #modal-cart-list{
     font-size: 120%;
