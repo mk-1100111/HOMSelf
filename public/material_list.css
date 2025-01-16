@@ -118,7 +118,11 @@ button .badge {
 #offcanvasBottom {
     font-size: 130%;
     max-width: 799px; /* 최대 너비를 799px로 제한 */
+    width: 100%; /* 너비를 기본적으로 100%로 설정 */
     margin: 0 auto; /* 화면 중앙 정렬 */
     left: 50%; /* 수평 중앙 정렬 */
     transform: translateX(-50%); /* 정확한 중앙 위치로 조정 */
+    position: fixed; /* 부모 요소의 영향을 받지 않도록 설정 */
+    bottom: 0; /* 화면 하단에 고정 */
 }
+
