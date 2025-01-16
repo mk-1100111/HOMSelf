@@ -37,12 +37,29 @@
 <body>
     <div class="container">
         <a href="/main">
-            <img id="clickableImage" src="public/static/img/main3.png">
+            <img id="clickableImage" src="" alt="Random Image">
             <div class="text-overlay">전송을 완료했습니다</div>
         </a>
     </div>
 
     <script>
+        // 배열에 이미지 경로 추가
+        const imagePaths = [
+            "public/static/img/main_img/main1.png",
+            "public/static/img/main_img/main2.png",
+            "public/static/img/main_img/main3.png",
+            "public/static/img/main_img/main4.png",
+            "public/static/img/main_img/main5.png",
+            "public/static/img/main_img/main6.png",
+            ];
+
+        // 랜덤으로 이미지 선택
+        const randomImage = imagePaths[Math.floor(Math.random() * imagePaths.length)];
+
+        // 선택된 이미지를 img 요소에 설정
+        const clickableImage = document.getElementById('clickableImage');
+        clickableImage.src = randomImage;
+
         let touchStartTime;
         let isDragging = false;
 
@@ -70,7 +87,7 @@
         });
 
         setTimeout(function() {
-            document.getElementById('clickableImage').click();
+            clickableImage.click();
         }, 3000);
     </script>
 </body>

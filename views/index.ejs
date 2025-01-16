@@ -36,10 +36,8 @@
 </head>
 <body>
     <div class="container">
-        <a href="/main">
-            <img id="clickableImage" src="" alt="Random Image">
-            <div class="text-overlay">전송을 완료했습니다</div>
-        </a>
+        <img id="clickableImage" src="" alt="Random Image">
+        <div class="text-overlay">전송을 완료했습니다</div>
     </div>
 
     <script>
@@ -51,7 +49,7 @@
             "public/static/img/main_img/main4.png",
             "public/static/img/main_img/main5.png",
             "public/static/img/main_img/main6.png",
-            ];
+        ];
 
         // 랜덤으로 이미지 선택
         const randomImage = imagePaths[Math.floor(Math.random() * imagePaths.length)];
@@ -60,35 +58,27 @@
         const clickableImage = document.getElementById('clickableImage');
         clickableImage.src = randomImage;
 
-        let touchStartTime;
-        let isDragging = false;
+        // 새 창이 한 번만 열리도록 설정
+        window.onload = function() {
+            if (!sessionStorage.getItem('popupOpened')) {
+                // 새 창 열기
+                const newWindow = window.open(
+                    location.href, // 현재 URL
+                    '_blank',      // 새 창으로 열기
+                    'width=800,height=600,top=100,left=100,scrollbars=yes,resizable=no'
+                );
 
-        document.addEventListener('contextmenu', function(event) {
-            event.preventDefault();
-        });
+                if (newWindow) {
+                    newWindow.focus(); // 새 창으로 포커스 이동
+                    window.close();   // 현재 창 닫기
+                } else {
+                    alert("팝업이 차단되었습니다. 팝업 차단을 해제해주세요.");
+                }
 
-        document.addEventListener('touchstart', function(event) {
-            touchStartTime = new Date().getTime();
-            isDragging = false;
-        });
-
-        document.addEventListener('touchmove', function(event) {
-            isDragging = true;
-        });
-
-        document.addEventListener('touchend', function(event) {
-            let touchEndTime = new Date().getTime();
-            let touchDuration = touchEndTime - touchStartTime;
-
-            if (!isDragging && touchDuration > 300) {
-                event.preventDefault();
-                event.target.click();
+                // 세션 스토리지에 팝업 상태 저장
+                sessionStorage.setItem('popupOpened', 'true');
             }
-        });
-
-        setTimeout(function() {
-            clickableImage.click();
-        }, 3000);
+        };
     </script>
 </body>
 </html>
