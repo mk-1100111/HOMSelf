@@ -60,6 +60,12 @@
 
         // 새 창이 한 번만 열리도록 설정
         window.onload = function() {
+            // 새 창에서 코드가 실행되지 않도록 방지
+            if (window.opener) {
+                // 새 창이라면 무한 새로고침 방지
+                return;
+            }
+
             if (!sessionStorage.getItem('popupOpened')) {
                 // 새 창 열기
                 const newWindow = window.open(
