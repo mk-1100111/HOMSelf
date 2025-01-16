@@ -113,3 +113,12 @@ body {
 button .badge {
     margin-left: -8px; /* Adjust as needed */
 }
+
+#cart-items {
+    text-align: left;
+    height: auto;
+    max-width: 799px; /* 카트 너비를 799px로 제한 */
+    margin: 0 auto; /* 가운데 정렬 */
+    display: flex;
+    flex-direction: column;
+}
