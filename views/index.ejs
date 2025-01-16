@@ -26,7 +26,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 30px;
+            font-size: 25px;
             color: white;
             background-color: rgba(0, 0, 0, 0.5);
             padding: 10px 20px;
@@ -36,8 +36,10 @@
 </head>
 <body>
     <div class="container">
-        <img id="clickableImage" src="" alt="Random Image">
-        <div class="text-overlay">전송을 완료했습니다</div>
+        <a href="/main">
+            <img id="clickableImage" src="" alt="Random Image">
+            <div class="text-overlay">전송을 완료했습니다</div>
+        </a>
     </div>
 
     <script>
@@ -58,25 +60,26 @@
         const clickableImage = document.getElementById('clickableImage');
         clickableImage.src = randomImage;
 
-        // 새 창이 한 번만 열리도록 설정
-        window.onload = function() {
-            // 새 창에서 코드가 실행되지 않도록 방지
-            if (window.opener) {
-                // 새 창이라면 무한 새로고침 방지
-                return;
-            }
+        // 새 창 열기와 크기 조절
+        let newWindow;
 
+        window.onload = function() {
             if (!sessionStorage.getItem('popupOpened')) {
                 // 새 창 열기
-                const newWindow = window.open(
-                    location.href, // 현재 URL
-                    '_blank',      // 새 창으로 열기
-                    'width=800,height=600,top=100,left=100,scrollbars=yes,resizable=no'
+                newWindow = window.open(
+                    '/main', // 이동할 페이지 경로
+                    '_blank', // 새 창으로 열기
+                    'width=800,height=600,top=100,left=100,scrollbars=yes,resizable=yes'
                 );
 
                 if (newWindow) {
                     newWindow.focus(); // 새 창으로 포커스 이동
-                    window.close();   // 현재 창 닫기
+
+                    // 창의 높이를 가져와 너비만 조정
+                    setTimeout(() => {
+                        const currentHeight = newWindow.outerHeight || newWindow.innerHeight; // 창 높이 가져오기
+                        newWindow.resizeTo(800, currentHeight); // 너비만 800으로 변경
+                    }, 500); // 창이 로드된 후 실행
                 } else {
                     alert("팝업이 차단되었습니다. 팝업 차단을 해제해주세요.");
                 }
