@@ -113,3 +113,16 @@ body {
 button .badge {
     margin-left: -8px; /* Adjust as needed */
 }
+
+#offcanvasBottom {
+    font-size: 130%;
+    max-width: 799px; /* 최대 너비 제한 */
+    width: 100%; /* 기본적으로 너비를 100%로 설정 */
+    margin: 0 auto; /* 화면 중앙 정렬 */
+    position: fixed; /* 화면의 위치 고정 */
+    left: 50%; /* 수평 중앙 정렬 */
+    transform: translateX(-50%); /* 정확히 가운데 정렬 */
+    bottom: 0; /* 화면 하단에 고정 */
+    box-sizing: border-box; /* 요소 크기를 정확히 계산 */
+    padding: 0 15px; /* 기본 패딩 설정 */
+}
