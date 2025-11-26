@@ -1,0 +1,16 @@
+
+name: Ping Render App
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10분마다 ping
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Curl Ping to Render
+        run: |
+          curl -s https://homself.onrender.com/ > /dev/null || echo "Ping failed"
