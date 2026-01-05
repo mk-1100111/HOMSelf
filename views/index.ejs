@@ -4,27 +4,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="/manifest.json">
     <style>
-        body {
-            text-align: center;
-            margin: 0;
-        }
-
-        .container {
-            position: relative;
-            display: inline-block;
-        }
-
-        .container video {
-            max-height: 95vh;
-            width: auto;
-            cursor: pointer;
-            object-fit: cover;
-        }
-
+        body { text-align: center; margin: 0; background: #000; }
+        .container { position: relative; display: inline-block; }
+        .container video { max-height: 95vh; width: auto; cursor: pointer; object-fit: cover; }
         .text-overlay {
             position: absolute;
-            top: 50%;
-            left: 50%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             font-size: 25px;
             color: white;
@@ -32,6 +17,7 @@
             padding: 10px 20px;
             border-radius: 5px;
             pointer-events: none;
+            white-space: pre-line;
         }
     </style>
 </head>
@@ -46,33 +32,54 @@
                 playsinline
                 preload="auto"
             ></video>
-            <div class="text-overlay">전송을 완료했습니다</div>
+            <div class="text-overlay" id="overlay">전송을 완료했습니다</div>
         </a>
     </div>
 
     <script>
-        // 기존 이미지 경로와 동일한 위치 사용
-        // public/static/img/main_img/1.mp4 ~ 7.mp4
+        // 기존 이미지가 쓰던 "public/static/img/main_img/" 경로 그대로 사용
+        // 단, 상대경로 문제 방지 위해 루트 기준(/)으로 강제
         const videoPaths = [
-            "public/static/img/main_img/1.mp4",
-            "public/static/img/main_img/2.mp4",
-            "public/static/img/main_img/3.mp4",
-            "public/static/img/main_img/4.mp4",
-            "public/static/img/main_img/5.mp4",
-            "public/static/img/main_img/6.mp4",
-            "public/static/img/main_img/7.mp4"
+            "/public/static/img/main_img/1.mp4",
+            "/public/static/img/main_img/2.mp4",
+            "/public/static/img/main_img/3.mp4",
+            "/public/static/img/main_img/4.mp4",
+            "/public/static/img/main_img/5.mp4",
+            "/public/static/img/main_img/6.mp4",
+            "/public/static/img/main_img/7.mp4"
         ];
 
         const randomVideo = videoPaths[Math.floor(Math.random() * videoPaths.length)];
 
         const clickableMedia = document.getElementById("clickableMedia");
-        clickableMedia.src = randomVideo;
+        const overlay = document.getElementById("overlay");
+        const mainLink = document.getElementById("mainLink");
 
-        // 모바일 자동재생 보강
-        clickableMedia.addEventListener("loadeddata", () => {
-            clickableMedia.play().catch(() => {});
-        });
+        // 진단용: 선택된 경로 표시 + HEAD로 404 여부 확인(가능한 서버면)
+        (async () => {
+            overlay.textContent = `전송을 완료했습니다\n(로드중: ${randomVideo})`;
 
+            try {
+                const res = await fetch(randomVideo, { method: "HEAD", cache: "no-store" });
+                overlay.textContent = `전송을 완료했습니다\n(경로: ${randomVideo})\n(HEAD: ${res.status})`;
+            } catch (e) {
+                overlay.textContent = `전송을 완료했습니다\n(경로: ${randomVideo})\n(HEAD 실패)`;
+            }
+
+            clickableMedia.src = randomVideo;
+
+            // 모바일 자동재생 보강
+            clickableMedia.addEventListener("loadeddata", () => {
+                clickableMedia.play().catch(() => {});
+            });
+
+            clickableMedia.addEventListener("error", () => {
+                overlay.textContent =
+                    `전송을 완료했습니다\n(비디오 로드 실패)\n${randomVideo}`;
+            });
+        })();
+
+        // 길게 누르면 링크 이동 (기존 로직 유지)
         let touchStartTime = 0;
         let isDragging = false;
 
@@ -97,7 +104,7 @@
 
         // 6초 뒤 메인으로 이동
         setTimeout(() => {
-            document.getElementById("mainLink").click();
+            mainLink.click();
         }, 6000);
     </script>
 </body>
