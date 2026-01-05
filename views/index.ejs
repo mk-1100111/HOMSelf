@@ -6,7 +6,7 @@
     <style>
         body {
             text-align: center;
-            margin: 0; 
+            margin: 0;
         }
 
         .container {
@@ -14,11 +14,11 @@
             display: inline-block;
         }
 
-        .container img {
+        .container video {
             max-height: 95vh;
-            width: auto; 
-            cursor: pointer; 
-            object-fit: cover;            
+            width: auto;
+            cursor: pointer;
+            object-fit: cover;
         }
 
         .text-overlay {
@@ -31,63 +31,64 @@
             background-color: rgba(0, 0, 0, 0.5);
             padding: 10px 20px;
             border-radius: 5px;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <a href="/main">
-            <img id="clickableImage" src="" alt="Random Image">
+            <video
+                id="clickableMedia"
+                autoplay
+                muted
+                loop
+                playsinline
+            ></video>
             <div class="text-overlay">전송을 완료했습니다</div>
         </a>
     </div>
 
     <script>
-        // 배열에 이미지 경로 추가
-        const imagePaths = [
-            "public/static/img/main_img/main1.png",
-            "public/static/img/main_img/main2.png",
-            "public/static/img/main_img/main3.png",
-            "public/static/img/main_img/main4.png",
-            "public/static/img/main_img/main5.png",
-            "public/static/img/main_img/main6.png",
-            ];
+        const videoPaths = [
+            "public/static/video/1.mp4",
+            "public/static/video/2.mp4",
+            "public/static/video/3.mp4",
+            "public/static/video/4.mp4",
+            "public/static/video/5.mp4",
+            "public/static/video/6.mp4",
+            "public/static/video/7.mp4"
+        ];
 
-        // 랜덤으로 이미지 선택
-        const randomImage = imagePaths[Math.floor(Math.random() * imagePaths.length)];
+        const randomVideo = videoPaths[Math.floor(Math.random() * videoPaths.length)];
 
-        // 선택된 이미지를 img 요소에 설정
-        const clickableImage = document.getElementById('clickableImage');
-        clickableImage.src = randomImage;
+        const clickableMedia = document.getElementById("clickableMedia");
+        clickableMedia.src = randomVideo;
 
-        let touchStartTime;
+        let touchStartTime = 0;
         let isDragging = false;
 
-        document.addEventListener('contextmenu', function(event) {
-            event.preventDefault();
-        });
+        document.addEventListener("contextmenu", e => e.preventDefault());
 
-        document.addEventListener('touchstart', function(event) {
-            touchStartTime = new Date().getTime();
+        document.addEventListener("touchstart", () => {
+            touchStartTime = Date.now();
             isDragging = false;
         });
 
-        document.addEventListener('touchmove', function(event) {
+        document.addEventListener("touchmove", () => {
             isDragging = true;
         });
 
-        document.addEventListener('touchend', function(event) {
-            let touchEndTime = new Date().getTime();
-            let touchDuration = touchEndTime - touchStartTime;
-
+        document.addEventListener("touchend", event => {
+            const touchDuration = Date.now() - touchStartTime;
             if (!isDragging && touchDuration > 300) {
                 event.preventDefault();
                 event.target.click();
             }
         });
 
-        setTimeout(function() {
-            clickableImage.click();
+        setTimeout(() => {
+            clickableMedia.click();
         }, 3000);
     </script>
 </body>
