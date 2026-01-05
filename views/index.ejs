@@ -37,33 +37,41 @@
 </head>
 <body>
     <div class="container">
-        <a href="/main">
+        <a href="/main" id="mainLink">
             <video
                 id="clickableMedia"
                 autoplay
                 muted
                 loop
                 playsinline
+                preload="auto"
             ></video>
             <div class="text-overlay">전송을 완료했습니다</div>
         </a>
     </div>
 
     <script>
+        // 기존 이미지 경로와 동일한 위치 사용
+        // public/static/img/main_img/1.mp4 ~ 7.mp4
         const videoPaths = [
-            "public/static/video/1.mp4",
-            "public/static/video/2.mp4",
-            "public/static/video/3.mp4",
-            "public/static/video/4.mp4",
-            "public/static/video/5.mp4",
-            "public/static/video/6.mp4",
-            "public/static/video/7.mp4"
+            "public/static/img/main_img/1.mp4",
+            "public/static/img/main_img/2.mp4",
+            "public/static/img/main_img/3.mp4",
+            "public/static/img/main_img/4.mp4",
+            "public/static/img/main_img/5.mp4",
+            "public/static/img/main_img/6.mp4",
+            "public/static/img/main_img/7.mp4"
         ];
 
         const randomVideo = videoPaths[Math.floor(Math.random() * videoPaths.length)];
 
         const clickableMedia = document.getElementById("clickableMedia");
         clickableMedia.src = randomVideo;
+
+        // 모바일 자동재생 보강
+        clickableMedia.addEventListener("loadeddata", () => {
+            clickableMedia.play().catch(() => {});
+        });
 
         let touchStartTime = 0;
         let isDragging = false;
@@ -87,9 +95,10 @@
             }
         });
 
+        // 6초 뒤 메인으로 이동
         setTimeout(() => {
-            clickableMedia.click();
-        }, 3000);
+            document.getElementById("mainLink").click();
+        }, 6000);
     </script>
 </body>
 </html>
