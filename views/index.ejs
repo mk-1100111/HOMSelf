@@ -3,6 +3,10 @@
 <head>
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="/manifest.json">
+
+    <!-- 브라우저 선요청 힌트 (보조용) -->
+    <link rel="preload" as="video" href="/static/img/main_img/1.mp4" type="video/mp4">
+
     <style>
         html, body {
             width: 100%;
@@ -18,14 +22,14 @@
             height: 100vh;
         }
 
-        .container video {
+        video {
             position: absolute;
             top: 50%;
             left: 50%;
             width: 100vw;
             height: 100vh;
             transform: translate(-50%, -50%);
-            object-fit: cover;   /* 9:16 꽉 채우기 */
+            object-fit: cover;
         }
 
         .text-overlay {
@@ -35,7 +39,7 @@
             transform: translate(-50%, -50%);
             font-size: 26px;
             color: white;
-            background-color: rgba(0, 0, 0, 0.55);
+            background: rgba(0,0,0,0.55);
             padding: 12px 24px;
             border-radius: 6px;
             pointer-events: none;
@@ -44,46 +48,49 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <a href="/main" id="mainLink">
-            <video
-                id="clickableMedia"
-                autoplay
-                muted
-                loop
-                playsinline
-                preload="auto"
-            ></video>
-            <div class="text-overlay">전송을 완료했습니다</div>
-        </a>
-    </div>
+<div class="container">
+    <a href="/main" id="mainLink">
+        <video id="video" autoplay muted loop playsinline></video>
+        <div class="text-overlay">전송을 완료했습니다</div>
+    </a>
+</div>
 
-    <script>
-        // 기존 이미지 경로 그대로 사용 (mp4만 교체)
-        const videoPaths = [
-            "/static/img/main_img/1.mp4",
-            "/static/img/main_img/2.mp4",
-            "/static/img/main_img/3.mp4",
-            "/static/img/main_img/4.mp4",
-            "/static/img/main_img/5.mp4",
-            "/static/img/main_img/6.mp4",
-            "/static/img/main_img/7.mp4"
-        ];
+<script>
+    const videoPaths = [
+        "/static/img/main_img/1.mp4",
+        "/static/img/main_img/2.mp4",
+        "/static/img/main_img/3.mp4",
+        "/static/img/main_img/4.mp4",
+        "/static/img/main_img/5.mp4",
+        "/static/img/main_img/6.mp4",
+        "/static/img/main_img/7.mp4"
+    ];
 
-        const randomVideo = videoPaths[Math.floor(Math.random() * videoPaths.length)];
-        const video = document.getElementById("clickableMedia");
+    const selected = videoPaths[Math.floor(Math.random() * videoPaths.length)];
+    const video = document.getElementById("video");
 
-        video.src = randomVideo;
+    // 🔥 핵심: 미리 fetch 해서 Blob으로 캐싱
+    async function preloadAndPlay(src) {
+        try {
+            const res = await fetch(src, { cache: "force-cache" });
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
 
-        // 모바일 자동재생 보강
-        video.addEventListener("loadeddata", () => {
+            video.src = blobUrl;
+            await video.play();
+        } catch (e) {
+            // 실패 시 바로 원본 재생
+            video.src = src;
             video.play().catch(() => {});
-        });
+        }
+    }
 
-        // 6초 뒤 메인 이동
-        setTimeout(() => {
-            document.getElementById("mainLink").click();
-        }, 6000);
-    </script>
+    preloadAndPlay(selected);
+
+    // 6초 뒤 메인 이동
+    setTimeout(() => {
+        document.getElementById("mainLink").click();
+    }, 6000);
+</script>
 </body>
 </html>
