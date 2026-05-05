@@ -14,3 +14,4 @@ jobs:
       - name: Curl Ping to Render
         run: |
           curl -s https://homself.onrender.com/ > /dev/null || echo "Ping failed"
+
