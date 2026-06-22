@@ -3,68 +3,94 @@ body {
     font-weight: 400;
     font-size: 150%;
     font-style: normal;
-    margin: 0 auto; 
-    max-width: 799px; 
+
+    margin: 0 auto;
+    max-width: 799px;
 }
 
 
-.container-fluid, #cart-items {
-    max-width: 799px; 
-    margin: 0 auto; 
+/* ==================================================
+   공통 컨테이너
+================================================== */
+
+.container-fluid,
+#cart-items {
+    max-width: 799px;
+    margin: 0 auto;
 }
+
+
+/* ==================================================
+   장바구니 목록
+================================================== */
 
 .cart-text {
-    flex-grow: 1; 
-    margin-left: 3%; /* 텍스트와 컨테이너 사이 간격 조정 */
+    flex-grow: 1;
+    margin-left: 3%;
 }
-
-.confirmation-button-container {
-    margin-left:80%;
-    width: 20%;
-    text-align: right; /* 버튼을 오른쪽 정렬 */
-    padding: 10px 20px; /* 상하 패딩과 좌우 패딩 추가 */
-    position: fixed; /* 스크롤과 상관없이 항상 하단에 고정 */
-    bottom: 0; /* 하단에 위치 */
-    right: 0; /* 오른쪽에 위치 */
-    left: 0; /* 왼쪽 경계 설정 */
-    /* z-index: 999; 다른 컨텐츠 위에 표시되도록 z-index 설정 */
-}
-
-
-
-.cart-button {
-    display: flex;
-    justify-content: flex-end; /* 버튼을 오른쪽 끝으로 정렬 */
-    gap: 5%; /* 버튼 간의 간격을 1%로 설정 */
-    flex-grow: 1; /* 충분한 공간 확보 */
- 
-}
-
-.button-container {
-    display: flex; /* 버튼들이 수평적으로 나란히 배열됨 */
-    flex-wrap: nowrap; /* 줄바꿈 없음 */
-    justify-content: flex-end; /* 우측 정렬 */
-    gap: 10px; /* 버튼 간 간격 설정 */
-}
-
 
 #cart-items {
-    text-align: left;
+    width: 70%;
     height: auto;
-    width: 70%; /* 전체 너비의 80%만 사용 */
+
     align-self: center;
+
     display: flex;
     flex-direction: column;
-}
 
+    text-align: left;
+}
 
 .cart-item {
     display: flex;
     align-items: center;
-    justify-content: space-between; /* 텍스트와 버튼 사이 최대 간격 확보 */
-    width: 100%; /* 부모 컨테이너 너비 전체 사용 */
+    justify-content: space-between;
+
+    width: 100%;
     margin-bottom: 10px;
 }
+
+
+/* ==================================================
+   수량 조절 버튼
+================================================== */
+
+.cart-button {
+    display: flex;
+    justify-content: flex-end;
+
+    gap: 5%;
+    flex-grow: 1;
+}
+
+.button-container {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+
+    gap: 10px;
+}
+
+
+/* ==================================================
+   List 확인 버튼
+================================================== */
+
+.confirmation-button-container {
+    flex: 0 0 auto;
+
+    width: 100%;
+    margin-left: 0;
+    padding: 10px 20px;
+
+    text-align: right;
+    background-color: #ffffff;
+}
+
+
+/* ==================================================
+   내비게이션
+================================================== */
 
 .navbar {
     height: 8%;
@@ -80,20 +106,27 @@ body {
     margin-left: 1%;
 }
 
-.modal {
-    margin-top: 40%;
+button .badge {
+    margin-left: -8px;
 }
 
+
+/* ==================================================
+   확인 모달 내부 목록
+================================================== */
+
 #modal-cart-list {
-    font-size: 130%;
     margin-top: 2%;
     margin-bottom: 2%;
+
+    font-size: 130%;
     text-align: center;
 }
 
-#offcanvasBottom {
-    font-size: 130%;
-}
+
+/* ==================================================
+   부자재 카드 목록
+================================================== */
 
 #material-lists {
     margin-top: 15%;
@@ -101,6 +134,11 @@ body {
     margin-right: 0.5%;
     margin-bottom: 60%;
 }
+
+
+/* ==================================================
+   기타 요소
+================================================== */
 
 #sendbtn {
     text-align: right;
@@ -110,28 +148,63 @@ body {
     text-align: center;
 }
 
-button .badge {
-    margin-left: -8px; /* Adjust as needed */
-}
+
+/* ==================================================
+   List Offcanvas 기본 설정
+================================================== */
 
 #offcanvasBottom {
+    width: 100%;
+    max-width: 799px;
+
+    margin: 0 auto;
+    padding: 0 15px;
+
+    box-sizing: border-box;
     font-size: 130%;
-    max-width: 799px; /* 최대 너비 제한 */
-    width: 100%; /* 기본적으로 너비를 100%로 설정 */
-    margin: 0 auto; /* 화면 중앙 정렬 */
-    position: fixed; /* 화면의 위치 고정 */
-    left: 50%; /* 수평 중앙 정렬 */
-    transform: translateX(-50%); /* 정확히 가운데 정렬 */
-    bottom: 0; /* 화면 하단에 고정 */
-    box-sizing: border-box; /* 요소 크기를 정확히 계산 */
-    padding: 0 15px; /* 기본 패딩 설정 */
+}
+
+
+/*
+   List 내부를 세로로 배치합니다.
+
+   위쪽: 선택한 부자재 목록
+   아래쪽: 확인 버튼
+*/
+#offcanvasBottom .offcanvas-body {
+    display: flex;
+    flex-direction: column;
+
+    min-height: 0;
+    overflow: hidden;
+}
+
+
+/*
+   선택한 부자재 목록만 스크롤되도록 합니다.
+*/
+#offcanvasBottom .cart-container {
+    flex: 1;
+
+    min-height: 0;
+    overflow-y: auto;
+}
+
+
+/*
+   확인 버튼은 목록 스크롤과 관계없이
+   List 아래쪽에 유지합니다.
+*/
+#offcanvasBottom .confirmation-button-container {
+    flex: 0 0 auto;
 }
 
 
 /* ==================================================
    PC 화면에서 List 창을 화면 중앙에 표시
-   모바일/태블릿은 기존 하단 표시 방식 유지
+   모바일과 태블릿은 기존처럼 화면 하단에 표시
 ================================================== */
+
 @media screen and (min-width: 992px) {
 
     #offcanvasBottom.offcanvas-bottom {
@@ -144,44 +217,35 @@ button .badge {
         height: min(620px, calc(100vh - 80px));
         max-height: calc(100vh - 80px);
 
-        border-top: none;
+        margin: 0;
+        padding: 0 15px;
+
         border: 1px solid rgba(0, 0, 0, 0.2);
         border-radius: 16px;
 
-        box-shadow:
-            0 15px 40px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
 
         /*
-         * List 창이 닫혀 있을 때는
-         * 화면 아래쪽으로 이동
-         */
-        transform: translate(
-            -50%,
-            calc(-50% + 100vh)
-        );
+           닫혀 있는 상태에서는
+           화면 아래쪽으로 이동시킵니다.
+        */
+        transform: translate(-50%, 100vh);
     }
 
+
     /*
-     * List 창이 열리는 중이거나
-     * 완전히 열린 상태
-     */
+       열리는 중 또는 완전히 열린 상태
+    */
     #offcanvasBottom.offcanvas-bottom.showing,
     #offcanvasBottom.offcanvas-bottom.show {
         transform: translate(-50%, -50%);
     }
 
-    /*
-     * List 창이 닫히는 중
-     */
-    #offcanvasBottom.offcanvas-bottom.hiding {
-        transform: translate(
-            -50%,
-            calc(-50% + 100vh)
-        );
-    }
 
-    #offcanvasBottom .offcanvas-body {
-        overflow-y: auto;
-        min-height: 0;
+    /*
+       닫히는 중인 상태
+    */
+    #offcanvasBottom.offcanvas-bottom.hiding {
+        transform: translate(-50%, 100vh);
     }
 }
