@@ -73,14 +73,14 @@ body {
 
 
 /* ==================================================
-   List 확인 버튼
+   확인 버튼
 ================================================== */
 
 .confirmation-button-container {
     flex: 0 0 auto;
 
     width: 100%;
-    margin-left: 0;
+    margin: 0;
     padding: 10px 20px;
 
     text-align: right;
@@ -89,7 +89,7 @@ body {
 
 
 /* ==================================================
-   내비게이션
+   상단 내비게이션
 ================================================== */
 
 .navbar {
@@ -112,7 +112,7 @@ button .badge {
 
 
 /* ==================================================
-   확인 모달 내부 목록
+   확인 모달
 ================================================== */
 
 #modal-cart-list {
@@ -151,6 +151,7 @@ button .badge {
 
 /* ==================================================
    List Offcanvas 기본 설정
+   모바일과 태블릿에서는 기존처럼 하단 표시
 ================================================== */
 
 #offcanvasBottom {
@@ -165,12 +166,7 @@ button .badge {
 }
 
 
-/*
-   List 내부를 세로로 배치합니다.
-
-   위쪽: 선택한 부자재 목록
-   아래쪽: 확인 버튼
-*/
+/* List 내부를 목록과 확인 버튼으로 분리 */
 #offcanvasBottom .offcanvas-body {
     display: flex;
     flex-direction: column;
@@ -180,9 +176,7 @@ button .badge {
 }
 
 
-/*
-   선택한 부자재 목록만 스크롤되도록 합니다.
-*/
+/* 선택한 부자재 목록만 스크롤 */
 #offcanvasBottom .cart-container {
     flex: 1;
 
@@ -191,61 +185,78 @@ button .badge {
 }
 
 
-/*
-   확인 버튼은 목록 스크롤과 관계없이
-   List 아래쪽에 유지합니다.
-*/
+/* 확인 버튼은 List 아래쪽에 유지 */
 #offcanvasBottom .confirmation-button-container {
     flex: 0 0 auto;
 }
 
 
 /* ==================================================
-   PC 화면에서 List 창을 화면 중앙에 표시
-   모바일과 태블릿은 기존처럼 화면 하단에 표시
+   PC 화면
+   List 창을 오른쪽 아래에 작게 표시
 ================================================== */
 
 @media screen and (min-width: 992px) {
 
     #offcanvasBottom.offcanvas-bottom {
-        top: 50%;
-        left: 50%;
-        right: auto;
-        bottom: auto;
+        top: auto;
+        left: auto;
+        right: 24px;
+        bottom: 24px;
 
-        width: min(760px, calc(100vw - 60px));
-        height: min(620px, calc(100vh - 80px));
-        max-height: calc(100vh - 80px);
+        width: 400px;
+        height: 340px;
+
+        max-width: calc(100vw - 48px);
+        max-height: calc(100vh - 48px);
 
         margin: 0;
-        padding: 0 15px;
+        padding: 0 12px;
 
         border: 1px solid rgba(0, 0, 0, 0.2);
-        border-radius: 16px;
+        border-radius: 14px;
 
-        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 
-        /*
-           닫혀 있는 상태에서는
-           화면 아래쪽으로 이동시킵니다.
-        */
-        transform: translate(-50%, 100vh);
+        transform: translateY(calc(100% + 50px));
     }
 
 
-    /*
-       열리는 중 또는 완전히 열린 상태
-    */
+    /* List가 열리는 중이거나 열린 상태 */
     #offcanvasBottom.offcanvas-bottom.showing,
     #offcanvasBottom.offcanvas-bottom.show {
-        transform: translate(-50%, -50%);
+        transform: translateY(0);
     }
 
 
-    /*
-       닫히는 중인 상태
-    */
+    /* List가 닫히는 중 */
     #offcanvasBottom.offcanvas-bottom.hiding {
-        transform: translate(-50%, 100vh);
+        transform: translateY(calc(100% + 50px));
+    }
+
+
+    /* PC에서는 글자와 버튼 크기를 조금 축소 */
+    #offcanvasBottom {
+        font-size: 100%;
+    }
+
+    #offcanvasBottom .offcanvas-title {
+        font-size: 120%;
+    }
+
+    #offcanvasBottom .btn {
+        font-size: 100%;
+    }
+
+    #offcanvasBottom #cart-items {
+        width: 100%;
+    }
+
+    #offcanvasBottom .cart-item {
+        margin-bottom: 6px;
+    }
+
+    #offcanvasBottom .confirmation-button-container {
+        padding: 8px 4px;
     }
 }
