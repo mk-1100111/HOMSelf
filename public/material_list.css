@@ -126,3 +126,62 @@ button .badge {
     box-sizing: border-box; /* 요소 크기를 정확히 계산 */
     padding: 0 15px; /* 기본 패딩 설정 */
 }
+
+
+/* ==================================================
+   PC 화면에서 List 창을 화면 중앙에 표시
+   모바일/태블릿은 기존 하단 표시 방식 유지
+================================================== */
+@media screen and (min-width: 992px) {
+
+    #offcanvasBottom.offcanvas-bottom {
+        top: 50%;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+
+        width: min(760px, calc(100vw - 60px));
+        height: min(620px, calc(100vh - 80px));
+        max-height: calc(100vh - 80px);
+
+        border-top: none;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        border-radius: 16px;
+
+        box-shadow:
+            0 15px 40px rgba(0, 0, 0, 0.25);
+
+        /*
+         * List 창이 닫혀 있을 때는
+         * 화면 아래쪽으로 이동
+         */
+        transform: translate(
+            -50%,
+            calc(-50% + 100vh)
+        );
+    }
+
+    /*
+     * List 창이 열리는 중이거나
+     * 완전히 열린 상태
+     */
+    #offcanvasBottom.offcanvas-bottom.showing,
+    #offcanvasBottom.offcanvas-bottom.show {
+        transform: translate(-50%, -50%);
+    }
+
+    /*
+     * List 창이 닫히는 중
+     */
+    #offcanvasBottom.offcanvas-bottom.hiding {
+        transform: translate(
+            -50%,
+            calc(-50% + 100vh)
+        );
+    }
+
+    #offcanvasBottom .offcanvas-body {
+        overflow-y: auto;
+        min-height: 0;
+    }
+}
