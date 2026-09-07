@@ -2,7 +2,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
 ) STRICT;
-INSERT OR IGNORE INTO settings VALUES ('schema_version','1'), ('paused','1');
+INSERT OR IGNORE INTO settings VALUES ('schema_version','1'), ('paused','1'), ('batch_active','0'), ('batch_items','[]');
 CREATE TABLE IF NOT EXISTS requests (
   id TEXT PRIMARY KEY,
   idempotency_key TEXT NOT NULL UNIQUE,
