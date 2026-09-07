@@ -1,9 +1,9 @@
 let token='';
 const $=id=>document.getElementById(id);
-const labels={pending:'접수',approved:'승인 대기',claimed:'준비 중',submitting:'불출 중',completed:'완료',needs_review:'확인 필요',cancelled:'취소'};
+const labels={pending:'접수',approved:'승인',claimed:'준비 중',submitting:'불출 중',completed:'완료',needs_review:'확인 필요',cancelled:'반려'};
 function message(text){$('message').textContent=text;}
 async function api(path,body){
-  const response=await fetch('/api/admin/'+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+  const response=await fetch('/api/admin/'+path,{method:body!==undefined?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})});
   if(!response.ok){const data=await response.json();throw Error(data.error);}
   return response;
 }
@@ -13,11 +13,17 @@ async function action(item,operation){
     if(!confirm('회사 PC 프로그램을 종료했으며 실제 HOMS 불출내역을 확인했습니까?'))return;
     note=prompt('확인 근거: 조회 시각·담당자·자재·수량 등을 적으세요.') || '';
     if(note.trim().length<10)return;
-  } else if(!confirm(item.manager_name+' / '+item.material_name+' / '+item.quantity+'개를 '+(operation==='approve'?'승인':'취소')+'할까요?'))return;
+  }
   await api('items/'+item.id,{action:operation,note});await refresh();
 }
-function button(text,fn,className=''){
-  const b=document.createElement('button');b.textContent=text;b.className='action-button '+className;
+function decisionButton(text,type,active,fn,disabled=false){
+  const b=document.createElement('button');
+  b.type='button';b.textContent=text;b.className='decision-button '+type+(active?' active':'');b.disabled=disabled;
+  b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
+  return b;
+}
+function utilityButton(text,fn,className=''){
+  const b=document.createElement('button');b.type='button';b.textContent=text;b.className='action-button '+className;
   b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
   return b;
 }
@@ -27,31 +33,74 @@ async function refresh(){
   refreshing=true;
   try{await refreshData();}finally{refreshing=false;}
 }
+function sheetStatus(item,data){
+  if(item.status==='claimed')return '준비 중';
+  if(item.status==='submitting')return '불출 중';
+  if(data.batch_active && item.current_batch)return '이번 배치 대기';
+  if(data.batch_active)return '다음 배치';
+  return '승인 대기';
+}
+function renderApprovalSheet(data){
+  const sheet=$('approval-sheet');sheet.replaceChildren();
+  const list=data.approval_sheet || [];
+  $('approval-count').textContent=list.length+'건';
+  $('approval-empty').hidden=list.length>0;
+  for(const item of list){
+    const card=document.createElement('article');card.className='approval-item'+(item.current_batch?' current-batch':'');
+    const head=document.createElement('div');head.className='approval-item-head';
+    const manager=document.createElement('strong');manager.textContent=item.manager_name;
+    const state=document.createElement('span');state.className='sheet-state sheet-'+item.status;state.textContent=sheetStatus(item,data);
+    head.append(manager,state);
+    const material=document.createElement('div');material.className='approval-material';material.textContent=item.material_name;
+    const meta=document.createElement('div');meta.className='approval-meta';
+    const code=document.createElement('span');code.textContent=item.material_code;
+    const qty=document.createElement('b');qty.textContent=item.quantity+'개';
+    meta.append(code,qty);
+    card.append(head,material,meta);sheet.append(card);
+  }
+}
 async function refreshData(){
   const data=await (await api('overview')).json();
   $('controls').hidden=false;
   if(data.batch_active){
     $('run-state').textContent='일괄 불출 진행 중';
-    $('queue-state').textContent='현재 배치 남은 '+data.batch_remaining+'건 · 다음 배치 대기 '+data.approved_waiting+'건';
+    $('queue-state').textContent='현재 배치 남은 '+data.batch_remaining+'건 · 다음 배치 승인 '+data.approved_waiting+'건';
   }else{
-    $('run-state').textContent='승인건 누적 대기';
-    $('queue-state').textContent='불출 대기 '+data.approved_waiting+'건';
+    $('run-state').textContent='승인 선택 대기';
+    $('queue-state').textContent='접수 '+data.pending_waiting+'건 · 승인 시트 '+(data.approval_sheet||[]).length+'건';
   }
+  $('bulk-approve').disabled=data.pending_waiting<1;
+  $('bulk-approve').textContent=data.pending_waiting>0?'접수 '+data.pending_waiting+'건 일괄승인':'일괄승인';
   $('start-batch').disabled=data.batch_active || data.approved_waiting<1;
-  $('start-batch').textContent=data.batch_active?'불출 진행 중':'승인건 '+data.approved_waiting+'건 일괄 불출';
+  $('start-batch').textContent=data.batch_active?'불출 진행 중':'승인 '+data.approved_waiting+'건 일괄불출';
   $('pause').disabled=!data.batch_active;
   $('worker-state').textContent=data.worker?'회사 PC 마지막 응답 '+new Date(data.worker.last_seen).toLocaleTimeString():'회사 PC 응답 기록 없음';
+
+  renderApprovalSheet(data);
+  const currentBatchIds=new Set((data.approval_sheet||[]).filter(item=>item.current_batch).map(item=>item.id));
   $('items').replaceChildren();
   for(const item of data.items){
-    const row=document.createElement('tr');
+    const row=document.createElement('tr');row.className='request-row status-row-'+item.status;
     const values=[new Date(item.created_at).toLocaleString(),item.manager_name,item.material_name+'\n'+item.material_code,item.quantity];
     for(const text of values){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}
     const statusCell=document.createElement('td');
-    const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status];statusCell.append(pill);row.append(statusCell);
-    const cell=document.createElement('td');
-    const actions=item.status==='pending'?[['승인','approve','approve'],['취소','cancel','']]:item.status==='approved'?[['취소','cancel','']]:item.status==='needs_review'?[['불출 완료 확인','confirm_completed','approve'],['미불출 확인','confirm_not_submitted','']]:[];
-    for(const [text,op,cls]of actions)cell.append(button(text,()=>action(item,op),cls));
-    cell.append(button('이력',async()=>{const history=await(await api('events/'+item.id)).json();$('db-panel').hidden=false;$('db-view').textContent=JSON.stringify(history,null,2);}));
+    const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status]||item.status;statusCell.append(pill);row.append(statusCell);
+    const cell=document.createElement('td');cell.className='decision-cell';
+    if(['pending','approved','cancelled'].includes(item.status)){
+      const locked=currentBatchIds.has(item.id);
+      cell.append(
+        decisionButton('승인','approve',item.status==='approved',()=>action(item,'toggle_approve'),locked),
+        decisionButton('반려','reject',item.status==='cancelled',()=>action(item,'toggle_reject'),locked)
+      );
+    }else if(item.status==='needs_review'){
+      cell.append(
+        utilityButton('불출 완료 확인',()=>action(item,'confirm_completed'),'confirm'),
+        utilityButton('미불출 확인',()=>action(item,'confirm_not_submitted'))
+      );
+    }else{
+      const done=document.createElement('span');done.className='locked-text';done.textContent=item.status==='completed'?'처리 완료':'처리 중';cell.append(done);
+    }
+    cell.append(utilityButton('이력',async()=>{const history=await(await api('events/'+item.id)).json();$('db-panel').hidden=false;$('db-view').textContent=JSON.stringify(history,null,2);},'history'));
     row.append(cell);$('items').append(row);
   }
   message('마지막 갱신 '+new Date().toLocaleTimeString());
@@ -64,15 +113,22 @@ $('login').onsubmit=async e=>{
 };
 $('logout').onclick=()=>{token='';location.reload();};
 $('refresh').onclick=()=>refresh().catch(e=>message(e.message));
+$('bulk-approve').onclick=async()=>{
+  const count=parseInt(($('bulk-approve').textContent.match(/\d+/)||['0'])[0],10);
+  if(count<1)return;
+  if(!confirm('현재 접수 상태 '+count+'건을 모두 승인 시트에 올릴까요?\n이미 반려한 항목은 변경하지 않습니다.'))return;
+  try{const result=await(await api('approve-all',{})).json();message(result.count+'건을 일괄 승인했습니다.');await refresh();}catch(e){message(e.message);}
+};
 $('start-batch').onclick=async()=>{
-  const label=$('queue-state').textContent;
-  if(!confirm(label+'\n\n현재 승인된 요청을 한 번에 불출할까요?\n시작 후 새 승인건은 다음 배치로 넘어갑니다.'))return;
+  const count=parseInt(($('start-batch').textContent.match(/\d+/)||['0'])[0],10);
+  if(count<1)return;
+  if(!confirm('승인 시트의 '+count+'건을 일괄 불출할까요?\n시작 후 새로 승인한 요청은 다음 배치로 넘어갑니다.'))return;
   try{const result=await(await api('batch/start',{})).json();message(result.count+'건 일괄 불출을 시작했습니다.');await refresh();}catch(e){message(e.message);}
 };
 $('pause').onclick=async()=>{
   if(!confirm('현재 일괄 불출을 중지할까요?\n처리 중이던 항목은 HOMS 실제 내역 확인이 필요할 수 있습니다.'))return;
   try{await api('pause',{paused:true});await refresh();}catch(e){message(e.message);}
 };
-setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},3000);
+setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},2000);
 $('inspect').onclick=async()=>{try{const data=await(await api('database')).json();$('db-panel').hidden=false;$('db-view').textContent=JSON.stringify(data,null,2);}catch(e){message(e.message);}};
 $('backup').onclick=async()=>{try{const blob=await(await api('backup')).blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='homself-'+new Date().toISOString().slice(0,10)+'.sqlite';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){message(e.message);}};
