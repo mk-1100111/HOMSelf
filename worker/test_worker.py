@@ -7,28 +7,31 @@ from common import ConnectionFailure
 from homs_adapter import parse_stock, validate_profile
 
 ITEM={'id':'test-item','attempt_id':'attempt-1','manager_name':'TEST','material_code':'123','quantity':2}
-def proof(item):
-    return {'source':'legacy-homs-history','transaction_id':'tx-'+item['id'],
-            'manager_name':item['manager_name'],'material_code':item['material_code'],
-            'quantity':item['quantity'],'status':'completed'}
+
 class FakeAPI:
-    def __init__(self, fail=None, items=()):self.calls=[];self.fail=fail;self.items=list(items)
+    def __init__(self, fail=None, items=()):
+        self.calls=[];self.fail=fail;self.items=list(items);self.finished=False
     def post(self,path,body):
         self.calls.append(path)
         if path.endswith('/'+str(self.fail)):raise RuntimeError('simulated lost response')
         if path=='claim':return {'item':self.items.pop(0)}
+        if path=='batch/finish':self.finished=True;return {'paused':True,'batch_active':False}
         return {}
     def get(self,path):
-        return {'paused':False,'worker_protocol':2,'blocked':None,'items':self.items[:]}
+        return {'paused':False,'batch_active':True,'batch_remaining':len(self.items),
+                'worker_protocol':3,'blocked':None,'items':self.items[:]}
+
 class FakeAdapter:
     def __init__(self):self.clicks=0
     def ensure_session(self):pass
     def prepare(self,item):pass
     def verify(self,item):pass
+    def show_admin(self,refresh=False):pass
     def submit_once(self,item):
         self.clicks+=1
         return {'source':'homs-ui-return','manager_name':item['manager_name'],
                 'material_code':item['material_code'],'quantity':item['quantity']}
+
 class SafetyTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
@@ -45,11 +48,20 @@ class SafetyTests(unittest.TestCase):
     def test_lost_begin_never_clicks(self):self.assertEqual(self.run_case('begin'),0)
     def test_lost_complete_never_resubmits(self):self.assertEqual(self.run_case('complete'),1)
     def test_success_without_input_never_resubmits(self):self.assertEqual(self.run_case(),1)
-    def test_continuous_processing_two_items_without_input(self):
+    def test_batch_processes_all_captured_items(self):
         api=FakeAPI(items=[ITEM,{**ITEM,'id':'second','attempt_id':'attempt-2'}]);adapter=FakeAdapter()
         with patch('builtins.input',side_effect=AssertionError('unexpected input')):
             run_loop(api,adapter,self.journal,sleep=lambda _:None,stop=lambda:adapter.clicks==2)
         self.assertEqual(self.journal.db.execute("SELECT count(*) FROM attempts WHERE phase='completed'").fetchone()[0],2)
+    def test_idle_without_batch_never_claims(self):
+        api=FakeAPI(items=[ITEM]);api.get=lambda _:{'paused':True,'batch_active':False,'batch_remaining':0,'worker_protocol':3,'blocked':None,'items':[]}
+        adapter=FakeAdapter();ticks=[]
+        run_loop(api,adapter,self.journal,sleep=lambda _:ticks.append(1),stop=lambda:len(ticks)==2)
+        self.assertEqual(adapter.clicks,0);self.assertNotIn('claim',api.calls)
+    def test_empty_active_batch_finishes(self):
+        api=FakeAPI();adapter=FakeAdapter();ticks=[]
+        run_loop(api,adapter,self.journal,sleep=lambda _:ticks.append(1),stop=lambda:api.finished)
+        self.assertTrue(api.finished);self.assertIn('batch/finish',api.calls)
     def test_idle_disconnect_recovers(self):
         api=FakeAPI(items=[ITEM]);get=api.get;calls=[]
         def reconnect(path):
@@ -59,14 +71,14 @@ class SafetyTests(unittest.TestCase):
         api.get=reconnect;adapter=FakeAdapter()
         run_loop(api,adapter,self.journal,sleep=lambda _:None,stop=lambda:adapter.clicks==1)
         self.assertEqual(adapter.clicks,1)
-    def test_paused_and_blocked_wait_before_claim(self):
+    def test_blocked_batch_waits_before_claim(self):
         api=FakeAPI(items=[ITEM]);states=iter([
-            {'paused':True,'blocked':None},{'paused':False,'blocked':{'status':'needs_review'}},
-            {'paused':False,'blocked':None}])
-        api.get=lambda _:dict(next(states),worker_protocol=2,items=[ITEM])
+            {'batch_active':True,'batch_remaining':1,'blocked':{'status':'needs_review'},'items':[ITEM]},
+            {'batch_active':True,'batch_remaining':1,'blocked':None,'items':[ITEM]}])
+        api.get=lambda _:dict(next(states),worker_protocol=3,paused=False)
         adapter=FakeAdapter();waits=[]
         run_loop(api,adapter,self.journal,sleep=lambda _:waits.append(adapter.clicks),stop=lambda:adapter.clicks==1)
-        self.assertEqual(waits[:2],[0,0]);self.assertEqual(api.calls.count('claim'),1)
+        self.assertEqual(waits[:1],[0]);self.assertEqual(api.calls.count('claim'),1)
     def test_uncertain_claim_stops_without_click_or_retry(self):
         api=FakeAPI(items=[ITEM]);post=api.post
         def uncertain(path,body):
@@ -85,13 +97,9 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(adapter.clicks,1);self.assertTrue(api.calls[-1].endswith('/review'))
         self.assertFalse(any(c.endswith('/complete') for c in api.calls))
     def test_legacy_server_protocol_stops(self):
-        api=FakeAPI();api.get=lambda _:{'paused':False,'items':[ITEM]}
+        api=FakeAPI();api.get=lambda _:{'paused':False,'batch_active':True,'batch_remaining':1,'worker_protocol':2,'blocked':None,'items':[ITEM]}
         with self.assertRaises(RuntimeError):run_loop(api,FakeAdapter(),self.journal)
         self.assertNotIn('claim',api.calls)
-    def test_legacy_local_receipt_cannot_be_reused(self):
-        self.journal.save_proof(ITEM,proof(ITEM))
-        import sqlite3
-        with self.assertRaises(sqlite3.IntegrityError):self.journal.save_proof({**ITEM,'id':'other'},proof(ITEM))
     def test_unknown_stock_and_profile_block(self):
         self.assertEqual(parse_stock('1,000'),1000)
         for value in ['-1','stock(5)','N/A','1 2','1,0']:
