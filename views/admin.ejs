@@ -2,8 +2,8 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HOMSelf 불출 관리</title><link rel="stylesheet" href="/public/admin.css"></head>
 <body><header><a href="/main">HOMSelf</a><h1>불출 요청 관리</h1></header>
-<main><section class="panel"><form id="login"><label>관리자 PIN <input id="token" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></label>
-<button>연결</button><button type="button" id="logout">로그아웃</button></form><p id="message" role="status">4자리 관리자 PIN 인증 후 요청과 DB를 조회할 수 있습니다.</p></section>
+<main><section class="panel"><form id="login"><label>관리자 PIN <input id="token" type="password" inputmode="numeric" autocomplete="off" required></label>
+<button>연결</button><button type="button" id="logout">로그아웃</button></form><p id="message" role="status">관리자 PIN 인증 후 요청과 DB를 조회할 수 있습니다. 기존 긴 키는 전환 기간에만 호환됩니다.</p></section>
 <section class="panel" id="controls" hidden><h2 id="run-state"></h2><p id="worker-state"></p>
 <button id="pause" class="danger">전체 일시정지</button><button id="resume">처리 허용</button><button id="refresh">새로고침</button>
 <button id="inspect">DB 구조·데이터 보기</button><button id="backup">SQLite 백업 다운로드</button>
