@@ -9,7 +9,7 @@ if not exist ".venv\Scripts\python.exe" goto failed
 if errorlevel 1 goto failed
 if not exist "config.json" copy /y "config.example.json" "config.json" >nul
 if not exist "config.json" goto failed
-if not exist "selectors.json" copy /y "selectors.example.json" "selectors.json" >nul
+if not exist "selectors.json" copy /y "selectors.auto.example.json" "selectors.json" >nul
 if not exist "selectors.json" goto failed
 echo Setup complete. Read README_KO.md and configure the server connection.
 echo Existing config, selectors and runtime records were preserved.

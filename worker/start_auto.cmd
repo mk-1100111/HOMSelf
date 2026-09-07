@@ -4,8 +4,8 @@ cd /d "%~dp0"
 if errorlevel 1 exit /b 1
 set "PYTHONUTF8=1"
 if not exist ".venv\Scripts\python.exe" goto missing
-echo LIVE MODE: Process one approved item automatically, then exit.
-".venv\Scripts\python.exe" worker.py --live --once
+echo AUTO MODE: Continuously process approved HOMS requests. Stop with Ctrl+C.
+".venv\Scripts\python.exe" worker.py --live
 set "RESULT=%ERRORLEVEL%"
 pause
 exit /b %RESULT%

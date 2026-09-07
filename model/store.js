@@ -13,7 +13,7 @@ class Store {
     if (filename !== ':memory:') fs.mkdirSync(path.dirname(filename), { recursive: true });
     this.db = new DatabaseSync(filename);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
-    check(this.db.prepare('PRAGMA user_version').get().user_version <= 1, '이 프로그램보다 새로운 DB입니다.');
+    check(this.db.prepare('PRAGMA user_version').get().user_version <= 2, '이 프로그램보다 새로운 DB입니다.');
     this.db.exec(schema);
     this.tx(() => {this.db.prepare("UPDATE settings SET value='1' WHERE key='paused'").run();this.quarantine('server_restart');});
   }
@@ -91,7 +91,11 @@ class Store {
   heartbeat(mode) {
     check(['check','live'].includes(mode),'잘못된 모드입니다.',400);
     this.db.prepare('INSERT INTO worker_status VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen,mode=excluded.mode').run(Date.now(),mode);
-    return {paused:this.paused(),schema_version:1};
+    return {paused:this.paused(),schema_version:2,worker_protocol:2};
+  }
+  preview() {
+    const blocked=this.db.prepare("SELECT id,status FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get();
+    return {paused:this.paused(),worker_protocol:2,blocked:blocked || null,items:this.db.prepare("SELECT i.id,i.request_id,i.material_code,i.material_name,i.quantity,i.status,r.manager_name FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.status='approved' ORDER BY i.updated_at,i.id LIMIT 50").all()};
   }
   claim() {
     return this.tx(() => {
@@ -103,7 +107,7 @@ class Store {
       this.event(item.id,'claimed','worker');return this.item(item.id);
     });
   }
-  transition(id,attempt,action,note) {
+  transition(id,attempt,action,note,proof) {
     return this.tx(() => {
       const item=this.item(id);
       check(typeof attempt === 'string' && item.attempt_id === attempt,'처리 권한이 만료됐습니다. 재불출하지 마세요.');
@@ -114,6 +118,17 @@ class Store {
       } else if(action === 'review') {
         check(['claimed','submitting','needs_review'].includes(item.status),'상태가 변경됐습니다.');
         this.db.prepare("UPDATE request_items SET status='needs_review',updated_at=?,evidence=? WHERE id=?").run(Date.now(),note || 'HOMS 결과 확인 필요',id);
+      } else if(action === 'auto_complete') {
+        check(proof && proof.source==='homs-history' && typeof proof.transaction_id==='string' && /^[A-Za-z0-9_-]{1,100}$/.test(proof.transaction_id), 'HOMS 거래번호가 필요합니다.',400);
+        check(proof.material_code===item.material_code && proof.manager_name===item.manager_name && proof.quantity===item.quantity && proof.status==='completed' &&
+          typeof proof.receiver_id==='string' && proof.receiver_id.length>0 && proof.receiver_id.length<=100,'HOMS 불출 결과가 요청과 일치하지 않습니다.',400);
+        const evidence=JSON.stringify({source:proof.source,transaction_id:proof.transaction_id,receiver_id:proof.receiver_id,manager_name:proof.manager_name,material_code:proof.material_code,quantity:proof.quantity,status:proof.status});
+        const prior=this.db.prepare('SELECT item_id,evidence FROM homs_receipts WHERE transaction_id=?').get(proof.transaction_id);
+        if(prior) {check(prior.item_id===id && prior.evidence===evidence && item.status==='completed','이미 사용된 HOMS 거래번호입니다.');return item;}
+        check(item.status==='submitting','자동 완료를 허용하지 않는 상태입니다.');
+        this.db.prepare('INSERT INTO homs_receipts VALUES(?,?,?,?)').run(proof.transaction_id,id,evidence,Date.now());
+        this.db.prepare("UPDATE request_items SET status='completed',updated_at=?,evidence=? WHERE id=?").run(Date.now(),evidence,id);
+        note=evidence;
       } else if(action === 'complete') {
         check(typeof note === 'string' && note.trim().length >= 10 && note.length <= 1000,'불출 결과 확인 근거가 필요합니다.',400);
         if(item.status === 'completed') {check(item.evidence === note,'완료 근거가 달라졌습니다.');return item;}
@@ -124,8 +139,8 @@ class Store {
     });
   }
   overview() {return {paused:this.paused(),counts:this.db.prepare('SELECT status,COUNT(*) AS count FROM request_items GROUP BY status').all(),
-    worker:this.db.prepare('SELECT * FROM worker_status WHERE id=1').get() || null,schema_version:1,items:this.items()};}
-  inspection() {return {schema,tables:['requests','request_items','events','settings','worker_status'].map(name => ({name,
+    worker:this.db.prepare('SELECT * FROM worker_status WHERE id=1').get() || null,schema_version:2,items:this.items()};}
+  inspection() {return {schema,tables:['requests','request_items','events','settings','worker_status','homs_receipts'].map(name => ({name,
     count:this.db.prepare(`SELECT COUNT(*) AS n FROM ${name}`).get().n,rows:this.db.prepare(`SELECT * FROM ${name} LIMIT 100`).all()}))};}
   snapshot(destination) {this.db.prepare('VACUUM INTO ?').run(destination);}
   close() {this.db.close();}

@@ -1,4 +1,4 @@
-# HOMSelf DB 구조 (schema version 1)
+# HOMSelf DB 구조 (schema version 2)
 
 ## 저장 위치와 역할
 
@@ -16,6 +16,10 @@
 | events | 상태 변경 감사 이력 | item_id, event_type, actor, note, created_at |
 | settings | DB 버전·전체 일시정지 | key, value |
 | worker_status | 회사 PC 마지막 응답 | last_seen, mode |
+| homs_receipts | 자동 완료 대조 근거, 거래번호 재사용 방지 | transaction_id(유일), item_id(유일), evidence, verified_at |
+
+v1 DB는 서버 시작 시 기존 요청을 보존하고 v2로 확장합니다. 배포 전 백업하세요.
+자동 완료는 이번 불출에서 얻은 거래번호로 HOMS 내역을 조회하고 담당자 ID·이름·자재·수량·완료 상태를 대조한 뒤 기록합니다. 서버는 요청 필드 일치와 거래번호 유일성을 검증하며, HOMS 조회 자체는 회사 PC에서 수행합니다.
 
 스키마 원본: `db/schema.sql`. 시각은 UTC Unix 밀리초이며 화면에서 현지 시각으로 표시합니다.
 비공개 `HOMSelf-data/config/catalog.json`은 매니저·자재·불출 단위의 기준 목록입니다. 기존 HOMSelf 목록을 가져왔으며 HOMS 코드의 정확성은 현장에서 대조해야 합니다.

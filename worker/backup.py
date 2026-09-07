@@ -33,7 +33,7 @@ def main():
     with sqlite3.connect(file.as_uri()+'?mode=ro',uri=True) as db:
         if db.execute('PRAGMA integrity_check').fetchone()[0]!='ok':
             raise RuntimeError('DB 무결성 검사 실패. 로컬 파일을 남기고 업로드하지 않습니다.')
-        if db.execute('PRAGMA user_version').fetchone()[0]!=1:
+        if db.execute('PRAGMA user_version').fetchone()[0] not in (1,2):
             raise RuntimeError('지원되지 않는 DB 버전입니다.')
     # Check again immediately before writing; do not upload if permissions changed.
     if http(base,github_token).get('private') is not True:

@@ -5,6 +5,30 @@ const os=require('node:os');
 const path=require('node:path');
 const {Store,catalog}=require('../model/store');
 const body={manager_name:catalog.managers[0],items:[{material_code:catalog.materials[0].material_code,quantity:2}]};
+function receipt(item,transaction_id='test-tx-1'){return {source:'homs-history',transaction_id,receiver_id:'test-staff',manager_name:item.manager_name,material_code:item.material_code,quantity:item.quantity,status:'completed'};}
+test('automatic receipts must match request and cannot complete two items',()=>{
+  const s=new Store(':memory:');approved(s);const item=s.claim();const p=receipt(item);
+  assert.throws(()=>s.transition(item.id,item.attempt_id,'auto_complete','',p));
+  s.transition(item.id,item.attempt_id,'begin');
+  for(const field of ['manager_name','material_code','quantity','status','source','receiver_id']) {
+    assert.throws(()=>s.transition(item.id,item.attempt_id,'auto_complete','',{...p,[field]:field==='receiver_id'?'':'wrong'}));
+    assert.equal(s.item(item.id).status,'submitting');
+  }
+  s.transition(item.id,item.attempt_id,'auto_complete','',p);
+  s.transition(item.id,item.attempt_id,'auto_complete','',{...p,verified_at:'changed'});
+  assert.equal(s.db.prepare('SELECT COUNT(*) n FROM homs_receipts').get().n,1);
+  const next=pending(s,'second-request-key-12345');s.adminAction(next.id,'approve');const other=s.claim();
+  s.transition(other.id,other.attempt_id,'begin');
+  assert.throws(()=>s.transition(other.id,other.attempt_id,'auto_complete','',receipt(other)));
+  assert.equal(s.item(other.id).status,'submitting');s.close();
+});
+test('schema v1 migration preserves requests and adds receipt table',()=>{
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'homself-v1-'));const file=path.join(folder,'db.sqlite');
+  let s=new Store(file);const item=pending(s);
+  s.db.exec("DROP TABLE homs_receipts; PRAGMA user_version=1; UPDATE settings SET value='1' WHERE key='schema_version'");s.close();
+  s=new Store(file);assert.equal(s.item(item.id).status,'pending');
+  assert.equal(s.overview().schema_version,2);assert.equal(s.inspection().tables.length,6);s.close();fs.rmSync(folder,{recursive:true});
+});
 function pending(s,key='12345678-1234-1234-1234-123456789abc'){const r=s.submit(body,key);return s.items().find(i=>i.request_id===r.request_id);}
 function approved(s){const item=pending(s);s.adminAction(item.id,'approve');s.pause(false);return item;}
 test('new database is paused; duplicate payload/key returns same request',()=>{

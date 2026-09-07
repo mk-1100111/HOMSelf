@@ -38,4 +38,11 @@ CREATE INDEX IF NOT EXISTS idx_events_item ON events(item_id,id);
 CREATE TABLE IF NOT EXISTS worker_status (
   id INTEGER PRIMARY KEY CHECK(id=1), last_seen INTEGER NOT NULL, mode TEXT NOT NULL
 ) STRICT;
-PRAGMA user_version = 1;
+CREATE TABLE IF NOT EXISTS homs_receipts (
+  transaction_id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL UNIQUE REFERENCES request_items(id),
+  evidence TEXT NOT NULL,
+  verified_at INTEGER NOT NULL
+) STRICT;
+UPDATE settings SET value='2' WHERE key='schema_version';
+PRAGMA user_version = 2;

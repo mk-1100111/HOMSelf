@@ -8,6 +8,14 @@ from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent
 
+class HTTPFailure(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__(f'서버 HTTP {status}: 상태/인증을 확인하세요. 불출은 자동 재시도하지 않습니다.')
+
+class ConnectionFailure(RuntimeError):
+    pass
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeError('인증정보 보호: HTTP 리다이렉트를 허용하지 않습니다.')
@@ -40,9 +48,9 @@ def http(url, token, method='GET', body=None, binary=False):
             return raw if binary else json.loads(raw)
     except urllib.error.HTTPError as error:
         # Do not echo response bodies or request headers containing private data.
-        raise RuntimeError(f'서버 HTTP {error.code}: 관리자 화면에서 상태/인증을 확인하세요. 자동 재시도하지 않습니다.') from None
+        raise HTTPFailure(error.code) from None
     except urllib.error.URLError:
-        raise RuntimeError('통신 실패: 반영 여부가 불명확합니다. 자동 재시도하지 않습니다.') from None
+        raise ConnectionFailure('통신 실패: 반영 여부가 불명확합니다. 불출은 자동 재시도하지 않습니다.') from None
 
 class API:
     def __init__(self, cfg, token=None):

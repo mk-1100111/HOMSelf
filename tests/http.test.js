@@ -11,7 +11,7 @@ test('HTTP auth, role isolation, schema and EJS routes',async()=>{
     assert.equal((await fetch(base+'/api/admin/overview')).status,401);
     assert.equal((await fetch(base+'/api/admin/overview',{headers:{Authorization:'Bearer '+cfg.WORKER_TOKEN}})).status,401);
     const schema=await(await fetch(base+'/api/admin/database',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}})).json();
-    assert.equal(schema.tables.length,5);
+    assert.equal(schema.tables.length,6);
     for(const route of ['/main','/material_list?managerName=test','/admin','/healthz'])assert.equal((await fetch(base+route)).status,200);
     const material=await(await fetch(base+'/material_list')).text();assert.ok(!material.includes('writeDataToSheet'));
     const preview=await(await fetch(base+'/api/worker/preview',{headers:{Authorization:'Bearer '+cfg.WORKER_TOKEN}})).json();assert.deepEqual(preview.items,[]);

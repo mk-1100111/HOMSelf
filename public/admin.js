@@ -17,7 +17,13 @@ async function action(item,operation){
   await api('items/'+item.id,{action:operation,note});await refresh();
 }
 function button(text,fn){const b=document.createElement('button');b.textContent=text;b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};return b;}
+let refreshing=false;
 async function refresh(){
+  if(refreshing || !token)return;
+  refreshing=true;
+  try{await refreshData();}finally{refreshing=false;}
+}
+async function refreshData(){
   const data=await (await api('overview')).json();$('controls').hidden=false;
   $('run-state').textContent=data.paused?'자동 불출 일시정지':'승인된 요청 처리 허용';
   $('worker-state').textContent=data.worker?'회사 PC 마지막 응답: '+new Date(data.worker.last_seen).toLocaleString()+' / '+data.worker.mode:'회사 PC 응답 기록 없음';
@@ -38,6 +44,7 @@ async function refresh(){
 $('login').onsubmit=async e=>{e.preventDefault();token=$('token').value.trim();$('token').value='';try{await refresh();}catch(e){message(e.message);}};
 $('logout').onclick=()=>{token='';location.reload();};
 $('refresh').onclick=()=>refresh().catch(e=>message(e.message));
+setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},5000);
 for(const [id,paused]of [['pause',true],['resume',false]])$(id).onclick=async()=>{
   if(!confirm(paused?'진행 중인 항목은 확인 필요로 바뀝니다. PC 프로그램도 종료하세요.':'승인된 요청의 처리를 허용할까요?'))return;
   try{await api('pause',{paused});await refresh();}catch(e){message(e.message);}

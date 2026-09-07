@@ -52,10 +52,10 @@ function createApp(config = process.env) {
     catch(error) {cleanup();next(error);}
   });
   app.post('/api/worker/heartbeat',auth('WORKER'),(req,res) => res.json(store.heartbeat(req.body.mode)));
-  app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json({paused:store.paused(),items:store.items().filter(i => i.status === 'approved').map(({attempt_id,...i})=>i)}));
+  app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json(store.preview()));
   app.post('/api/worker/claim',auth('WORKER'),(req,res) => res.json({item:store.claim()}));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res) => res.json(store.item(req.params.id)));
-  app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res) => res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note)));
+  app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res) => res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
   app.get('/',(req,res) => res.redirect('/main'));
   app.get('/main',(req,res) => res.render('main',{managers:[]}));
   app.get('/material_list',(req,res) => res.render('material_list',{materials:[]}));
