@@ -10,5 +10,6 @@
   "quantity_css": "#srcStockCnt_0",
   "release_button_xpath": "//*[@id=\"_popup0\"]/div[2]/div/div/div/div[2]/a[2]",
   "first_confirm_css": "#_confirmModalOk",
-  "second_confirm_css": "#_alertModalOk"
+  "second_confirm_css": "#_alertModalOk",
+  "release_close_xpath": "//*[@id=\"stockSaveClose\"]"
 }
