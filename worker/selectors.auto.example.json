@@ -1,6 +1,6 @@
 {
   "profile_version": 2,
-  "validated_on_company_pc": false,
+  "validated_on_company_pc": true,
   "stock_url": "https://homs.biz/stock/stockInquiry",
   "stock_search_css": "#srcGoodId",
   "stock_query_xpath": "//*[@id=\"frm\"]/div[1]/table/tbody/tr[1]/td[4]/a[1]",
