@@ -29,7 +29,6 @@ function createApp(config = process.env) {
   const app = express(); app.disable('x-powered-by');
   app.set('trust proxy',1);
   app.set('view engine','ejs'); app.set('views',path.join(__dirname,'views'));
-  // Existing EJS has inline handlers. Keep compatibility without permitting frames.
   app.use(helmet({contentSecurityPolicy:{directives:{
     defaultSrc:["'self'"],scriptSrc:["'self'","'unsafe-inline'",'https://ajax.googleapis.com','https://cdn.jsdelivr.net'],
     scriptSrcAttr:["'unsafe-inline'"],styleSrc:["'self'","'unsafe-inline'",'https://cdn.jsdelivr.net','https://fonts.googleapis.com'],
@@ -70,6 +69,7 @@ function createApp(config = process.env) {
   app.get('/api/admin/database',auth('ADMIN'),(req,res) => res.json(store.inspection()));
   app.get('/api/admin/events/:id',auth('ADMIN'),(req,res) => res.json(store.db.prepare('SELECT * FROM events WHERE item_id=? ORDER BY id').all(req.params.id)));
   app.post('/api/admin/pause',auth('ADMIN'),(req,res) => res.json(store.pause(req.body.paused)));
+  app.post('/api/admin/batch/start',auth('ADMIN'),(req,res) => res.json(store.startBatch()));
   app.post('/api/admin/items/:id',auth('ADMIN'),(req,res) => res.json(store.adminAction(req.params.id,req.body.action,req.body.note)));
   let snapshotBusy=false;
   app.get('/api/admin/backup',auth('ADMIN'),(req,res,next) => {
@@ -84,6 +84,7 @@ function createApp(config = process.env) {
   app.post('/api/worker/heartbeat',auth('WORKER'),(req,res) => res.json(store.heartbeat(req.body.mode)));
   app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json(store.preview()));
   app.post('/api/worker/claim',auth('WORKER'),(req,res) => res.json({item:store.claim()}));
+  app.post('/api/worker/batch/finish',auth('WORKER'),(req,res) => res.json(store.finishBatch()));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res) => res.json(store.item(req.params.id)));
   app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res) => res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
   app.get('/',(req,res) => res.redirect('/main'));
@@ -101,7 +102,7 @@ function createApp(config = process.env) {
 }
 if(require.main === module) {
   const {app,store}=createApp();
-  const server=app.listen(process.env.PORT || 3000,() => console.log('HOMSelf 시작: 자동 불출은 일시정지 상태입니다.'));
+  const server=app.listen(process.env.PORT || 3000,() => console.log('HOMSelf 시작: 승인 건은 일괄 불출 시작 전까지 대기합니다.'));
   for(const signal of ['SIGINT','SIGTERM']) process.once(signal,() => server.close(() => {store.close();process.exit(0);}));
 }
 module.exports={createApp};
