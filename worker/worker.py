@@ -59,10 +59,16 @@ def execute_item(api, adapter, journal, item):
         update('complete',note=note)
         journal.record(item,'completed')
         print('자동 불출 완료:',item['id'],item['manager_name'],item['material_code'],item['quantity'],flush=True)
+        try:
+            adapter.show_admin(refresh=True)
+        except Exception:
+            pass
     except BaseException as error:
         journal.record(item,'needs_review')
         note=f'자동 처리 중단: {stage} / {type(error).__name__}. HOMS 실제 불출내역 대조 필요.'
         try: update('review',note)
+        except Exception: pass
+        try: adapter.show_admin(refresh=True)
         except Exception: pass
         raise
 
@@ -141,8 +147,10 @@ def main():
                 reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'))
-            adapter=HomsAdapter(profile)
+            admin_url=cfg['server_url'].rstrip('/') + '/admin'
+            adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile')
             print('승인 요청 자동 감시 시작. 종료: Ctrl+C',flush=True)
+            print('사용 순서: HOMS 로그인 -> 관리자 탭에서 처리 허용(필요 시) -> 요청 승인',flush=True)
             run_loop(api,adapter,journal,interval,once=args.once)
         finally:
             journal.db.close()
