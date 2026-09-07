@@ -73,7 +73,6 @@ async function refreshData(){
   $('bulk-approve').textContent=data.pending_waiting>0?'접수 '+data.pending_waiting+'건 일괄승인':'일괄승인';
   $('start-batch').disabled=data.batch_active || data.approved_waiting<1;
   $('start-batch').textContent=data.batch_active?'불출 진행 중':'승인 '+data.approved_waiting+'건 일괄불출';
-  $('pause').disabled=!data.batch_active;
   $('worker-state').textContent=data.worker?'회사 PC 마지막 응답 '+new Date(data.worker.last_seen).toLocaleTimeString():'회사 PC 응답 기록 없음';
 
   renderApprovalSheet(data);
@@ -112,7 +111,6 @@ $('login').onsubmit=async e=>{
   try{await refresh();}catch(e){message(e.message);token='';}
 };
 $('logout').onclick=()=>{token='';location.reload();};
-$('refresh').onclick=()=>refresh().catch(e=>message(e.message));
 $('bulk-approve').onclick=async()=>{
   const count=parseInt(($('bulk-approve').textContent.match(/\d+/)||['0'])[0],10);
   if(count<1)return;
@@ -125,10 +123,4 @@ $('start-batch').onclick=async()=>{
   if(!confirm('승인 시트의 '+count+'건을 일괄 불출할까요?\n시작 후 새로 승인한 요청은 다음 배치로 넘어갑니다.'))return;
   try{const result=await(await api('batch/start',{})).json();message(result.count+'건 일괄 불출을 시작했습니다.');await refresh();}catch(e){message(e.message);}
 };
-$('pause').onclick=async()=>{
-  if(!confirm('현재 일괄 불출을 중지할까요?\n처리 중이던 항목은 HOMS 실제 내역 확인이 필요할 수 있습니다.'))return;
-  try{await api('pause',{paused:true});await refresh();}catch(e){message(e.message);}
-};
 setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},2000);
-$('inspect').onclick=async()=>{try{const data=await(await api('database')).json();$('db-panel').hidden=false;$('db-view').textContent=JSON.stringify(data,null,2);}catch(e){message(e.message);}};
-$('backup').onclick=async()=>{try{const blob=await(await api('backup')).blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='homself-'+new Date().toISOString().slice(0,10)+'.sqlite';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){message(e.message);}};
