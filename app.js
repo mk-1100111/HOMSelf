@@ -10,9 +10,10 @@ function createApp(config = process.env) {
   const adminPin=String(config.ADMIN_TOKEN || '');
   const kioskPin=String(config.KIOSK_TOKEN || '');
   const workerToken=String(config.WORKER_TOKEN || '');
-  check(/^\d{4}$/.test(adminPin),'ADMIN_TOKEN은 숫자 4자리 PIN으로 설정하세요.');
-  check(/^\d{4}$/.test(kioskPin),'KIOSK_TOKEN은 숫자 4자리 PIN으로 설정하세요.');
-  check(adminPin !== kioskPin,'ADMIN_TOKEN과 KIOSK_TOKEN은 서로 다른 4자리 PIN이어야 합니다.');
+  const pinOrLegacy=value => /^\d{4}$/.test(value) || value.length >= 32;
+  check(pinOrLegacy(adminPin),'ADMIN_TOKEN은 숫자 4자리 PIN으로 설정하세요. 기존 32자 이상 키는 마이그레이션 동안만 호환됩니다.');
+  check(pinOrLegacy(kioskPin),'KIOSK_TOKEN은 숫자 4자리 PIN으로 설정하세요. 기존 32자 이상 키는 마이그레이션 동안만 호환됩니다.');
+  check(adminPin !== kioskPin,'ADMIN_TOKEN과 KIOSK_TOKEN은 서로 달라야 합니다.');
   check(workerToken.length >= 32,'WORKER_TOKEN은 32자 이상의 내부 통신키로 설정하세요.');
   check(config.DB_PATH && path.isAbsolute(config.DB_PATH), 'DB_PATH는 절대 경로여야 합니다.');
   if (config.NODE_ENV === 'production') {
