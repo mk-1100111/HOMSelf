@@ -3,6 +3,7 @@ const pendingKey = 'homself.pending.v1';
 const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
 
 function showRequestSuccess(){
+  if(!document || typeof document.createElement!=='function' || !document.body || !document.head) return Promise.resolve();
   return new Promise(resolve=>{
     let style=document.getElementById('homself-success-style');
     if(!style){
