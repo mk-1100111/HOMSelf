@@ -11,21 +11,27 @@ test('rejects invalid admin and kiosk PIN configuration',()=>{
   assert.throws(()=>createApp({...base,WORKER_TOKEN:'short'}),/WORKER_TOKEN/);
 });
 
-test('HTTP auth, role isolation, schema and EJS routes',async()=>{
+test('HTTP auth, approval sheet workflow, schema and EJS routes',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-http-'));
   const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:path.resolve('config/catalog.example.json'),ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
   const {app,store}=createApp(cfg);const server=app.listen(0,'127.0.0.1');
   await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const adminHeaders={Authorization:'Bearer '+cfg.ADMIN_TOKEN,'Content-Type':'application/json'};
+  const kioskHeaders={Authorization:'Bearer '+cfg.KIOSK_TOKEN,'Content-Type':'application/json','Idempotency-Key':'http-test-request-0001'};
   try{
     assert.equal((await fetch(base+'/api/admin/overview')).status,401);
     assert.equal((await fetch(base+'/api/admin/overview',{headers:{Authorization:'Bearer '+cfg.WORKER_TOKEN}})).status,401);
-    const schema=await(await fetch(base+'/api/admin/database',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}})).json();
-    assert.equal(schema.tables.length,6);
+    const schema=await(await fetch(base+'/api/admin/database',{headers:adminHeaders})).json();assert.equal(schema.tables.length,6);
     for(const route of ['/main','/material_list?managerName=test','/admin','/healthz'])assert.equal((await fetch(base+route)).status,200);
     const material=await(await fetch(base+'/material_list')).text();assert.ok(!material.includes('writeDataToSheet'));
     const preview=await(await fetch(base+'/api/worker/preview',{headers:{Authorization:'Bearer '+cfg.WORKER_TOKEN}})).json();assert.deepEqual(preview.items,[]);
-    const catalog=await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});assert.equal(catalog.status,200);
-    const backup=await fetch(base+'/api/admin/backup',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}});
-    assert.equal(Buffer.from(await backup.arrayBuffer()).subarray(0,15).toString(),'SQLite format 3');
+    const catalogResponse=await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});assert.equal(catalogResponse.status,200);
+    const catalog=await catalogResponse.json();
+    const requestBody={manager_name:catalog.managers[0],items:[{material_code:catalog.materials[0].material_code,quantity:catalog.materials[0].material_unit}]};
+    const created=await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders,body:JSON.stringify(requestBody)});assert.equal(created.status,201);
+    let overview=await(await fetch(base+'/api/admin/overview',{headers:adminHeaders})).json();assert.equal(overview.pending_waiting,1);assert.equal(overview.approval_sheet.length,0);
+    const approved=await(await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'})).json();assert.equal(approved.count,1);
+    overview=await(await fetch(base+'/api/admin/overview',{headers:adminHeaders})).json();assert.equal(overview.approval_sheet.length,1);
+    const backup=await fetch(base+'/api/admin/backup',{headers:adminHeaders});assert.equal(Buffer.from(await backup.arrayBuffer()).subarray(0,15).toString(),'SQLite format 3');
   } finally {await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
