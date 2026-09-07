@@ -41,7 +41,12 @@ async function refreshData(){
   }
   message('갱신: '+new Date().toLocaleTimeString());
 }
-$('login').onsubmit=async e=>{e.preventDefault();token=$('token').value.trim();$('token').value='';try{await refresh();}catch(e){message(e.message);}};
+$('login').onsubmit=async e=>{
+  e.preventDefault();
+  token=$('token').value.trim();$('token').value='';
+  if(!/^\d{4}$/.test(token)){message('관리자 PIN은 숫자 4자리입니다.');token='';return;}
+  try{await refresh();}catch(e){message(e.message);token='';}
+};
 $('logout').onclick=()=>{token='';location.reload();};
 $('refresh').onclick=()=>refresh().catch(e=>message(e.message));
 setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},5000);
