@@ -69,6 +69,7 @@ function createApp(config = process.env) {
   app.get('/api/admin/database',auth('ADMIN'),(req,res) => res.json(store.inspection()));
   app.get('/api/admin/events/:id',auth('ADMIN'),(req,res) => res.json(store.db.prepare('SELECT * FROM events WHERE item_id=? ORDER BY id').all(req.params.id)));
   app.post('/api/admin/pause',auth('ADMIN'),(req,res) => res.json(store.pause(req.body.paused)));
+  app.post('/api/admin/approve-all',auth('ADMIN'),(req,res) => res.json(store.approveAll()));
   app.post('/api/admin/batch/start',auth('ADMIN'),(req,res) => res.json(store.startBatch()));
   app.post('/api/admin/items/:id',auth('ADMIN'),(req,res) => res.json(store.adminAction(req.params.id,req.body.action,req.body.note)));
   let snapshotBusy=false;
@@ -102,7 +103,7 @@ function createApp(config = process.env) {
 }
 if(require.main === module) {
   const {app,store}=createApp();
-  const server=app.listen(process.env.PORT || 3000,() => console.log('HOMSelf 시작: 승인 건은 일괄 불출 시작 전까지 대기합니다.'));
+  const server=app.listen(process.env.PORT || 3000,() => console.log('HOMSelf 시작: 승인 시트의 항목은 일괄 불출 시작 전까지 대기합니다.'));
   for(const signal of ['SIGINT','SIGTERM']) process.once(signal,() => server.close(() => {store.close();process.exit(0);}));
 }
 module.exports={createApp};
