@@ -11,7 +11,13 @@ function createApp(config = process.env) {
   check(keys.every(k => typeof k === 'string' && k.length >= 32) && new Set(keys).size === 3,
     '서로 다른 ADMIN_TOKEN/KIOSK_TOKEN/WORKER_TOKEN(각 32자 이상)을 설정하세요.');
   check(config.DB_PATH && path.isAbsolute(config.DB_PATH), 'DB_PATH는 절대 경로여야 합니다.');
-  if (config.NODE_ENV === 'production') check(config.PERSISTENT_STORAGE_CONFIRMED === 'yes', '영구 디스크 연결 확인 후 PERSISTENT_STORAGE_CONFIRMED=yes를 설정하세요.');
+  if (config.NODE_ENV === 'production') {
+    if (config.DB_PATH.startsWith('/tmp/')) {
+      check(config.EPHEMERAL_STORAGE_CONFIRMED === 'yes', '무료 Render 임시 저장소 사용 확인 후 EPHEMERAL_STORAGE_CONFIRMED=yes를 설정하세요.');
+    } else {
+      check(config.PERSISTENT_STORAGE_CONFIRMED === 'yes', '영구 디스크 연결 확인 후 PERSISTENT_STORAGE_CONFIRMED=yes를 설정하세요.');
+    }
+  }
   const catalog=loadCatalog(config.CATALOG_PATH);
   if(config.NODE_ENV === 'production') check(catalog.demo !== true,'샘플 기준정보로 운영할 수 없습니다. 비공개 저장소의 실제 기준정보를 설정하세요.');
   const store = new Store(config.DB_PATH,catalog);
