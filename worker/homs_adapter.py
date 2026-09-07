@@ -48,7 +48,9 @@ class HomsAdapter:
             profile_path = Path(profile_dir).resolve()
             profile_path.mkdir(parents=True, exist_ok=True)
             options.add_argument('--user-data-dir=' + str(profile_path))
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        # Chrome의 "자동화된 테스트 소프트웨어에 의해 제어" 안내를 가능한 범위에서 숨긴다.
+        options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+        options.add_experimental_option('useAutomationExtension', False)
 
         self.driver = webdriver.Chrome(options=options)
         self.driver.maximize_window()
@@ -85,6 +87,36 @@ class HomsAdapter:
         self._switch_or_reopen('admin_handle', self.admin_url)
         if refresh:
             self.driver.refresh()
+
+    def keep_alive(self):
+        """유휴 상태에서 HOMS 쿠키를 사용하는 비파괴 GET을 보내 세션 활동을 유지한다."""
+        original = None
+        try:
+            original = self.driver.current_window_handle
+        except Exception:
+            pass
+        try:
+            self._switch_or_reopen('homs_handle', self.p['stock_url'])
+            result = self.driver.execute_async_script(
+                """
+                const done = arguments[arguments.length - 1];
+                fetch(arguments[0], {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    headers: {'X-HOMSelf-KeepAlive': '1'}
+                }).then(r => done({ok:r.ok,status:r.status,url:r.url}))
+                  .catch(e => done({ok:false,error:String(e)}));
+                """,
+                self.p['stock_url']
+            )
+            return result
+        finally:
+            if original and original in self.driver.window_handles:
+                try:
+                    self.driver.switch_to.window(original)
+                except Exception:
+                    pass
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
