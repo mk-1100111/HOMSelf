@@ -25,10 +25,13 @@
     <div class="status-main">
       <div>
         <span class="eyebrow">불출 상태</span>
-        <h2 id="run-state">승인건 대기</h2>
+        <h2 id="run-state">승인 선택 대기</h2>
         <p id="queue-state" class="queue-state"></p>
       </div>
-      <button id="start-batch" class="release-button">승인건 일괄 불출</button>
+      <div class="primary-actions">
+        <button id="bulk-approve" class="bulk-approve-button">일괄승인</button>
+        <button id="start-batch" class="release-button">일괄불출</button>
+      </div>
     </div>
     <div class="status-sub">
       <span id="worker-state">회사 PC 연결 확인 중</span>
@@ -42,21 +45,33 @@
     </div>
   </section>
 
-  <section class="request-panel">
-    <div class="section-title">
-      <h2>요청 목록</h2>
-      <span>승인은 대기열에만 추가되며, 일괄 불출 버튼을 눌러야 HOMS 처리가 시작됩니다.</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>접수 시각</th><th>매니저</th><th>자재</th><th>수량</th><th>상태</th><th>작업</th></tr></thead>
-        <tbody id="items"></tbody>
-      </table>
-    </div>
+  <section class="board-grid">
+    <section class="request-panel request-list-panel">
+      <div class="section-title">
+        <div><h2>요청 목록</h2><span>최대 1,000건 · 오래된 완료/반려 항목부터 자동 정리</span></div>
+        <div class="legend"><span class="legend-dot green"></span>승인 <span class="legend-dot red"></span>반려</div>
+      </div>
+      <div class="table-wrap request-table-wrap">
+        <table>
+          <thead><tr><th>접수 시각</th><th>매니저</th><th>자재</th><th>수량</th><th>상태</th><th>승인 / 반려</th></tr></thead>
+          <tbody id="items"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="approval-panel">
+      <div class="approval-head">
+        <div><span class="eyebrow">불출 대상</span><h2>승인 시트</h2></div>
+        <span id="approval-count" class="approval-count">0건</span>
+      </div>
+      <p class="approval-guide">승인 버튼이 켜진 요청만 이곳에 표시됩니다. 일괄불출 완료 시 자동으로 빠집니다.</p>
+      <div id="approval-sheet" class="approval-sheet"></div>
+      <div id="approval-empty" class="approval-empty">승인된 요청이 없습니다.</div>
+    </aside>
   </section>
 
   <section class="request-panel" id="db-panel" hidden>
-    <div class="section-title"><h2>DB 구조 및 데이터</h2><span>각 테이블 최대 100행 미리보기</span></div>
+    <div class="section-title"><div><h2>DB 구조 및 데이터</h2><span>각 테이블 최대 100행 미리보기</span></div></div>
     <pre id="db-view"></pre>
   </section>
 </main>
