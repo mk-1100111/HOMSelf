@@ -1,13 +1,15 @@
 /* A lost response MUST retry the same key AND payload, never create a new request. */
 const pendingKey = 'homself.pending.v1';
+const kioskPinOk = token => /^\d{4}$/.test(token);
 window.getHomselfCatalog=async function(){
   try {
     let token=sessionStorage.getItem('homself.kiosk.token');
-    if(!token) token=prompt('지점 키오스크 인증키를 입력하세요.');
+    if(!token) token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');
     if(!token)return null;
     token=token.trim();
+    if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다.');}
     const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});
-    if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 인증키와 서버 설정을 확인하세요.');}
+    if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}
     sessionStorage.setItem('homself.kiosk.token',token);
     return await response.json();
   } catch(error){alert(error.message);return null;}
@@ -17,15 +19,17 @@ async function transmitPending() {
   if(!pending) return;
   let token=sessionStorage.getItem('homself.kiosk.token');
   if(!token) {
-    token=prompt('지점 키오스크 인증키를 입력하세요. 관리자 인증키가 아닙니다.');
+    token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');
     if(!token) return;
-    sessionStorage.setItem('homself.kiosk.token',token.trim());
   }
+  token=token.trim();
+  if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}
+  sessionStorage.setItem('homself.kiosk.token',token);
   const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',
-    Authorization:'Bearer '+token.trim(),'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});
+    Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});
   const result=await response.json();
   if(!response.ok) {
-    if(response.status === 401) sessionStorage.removeItem('homself.kiosk.token');
+    if(response.status === 401 || response.status === 429) sessionStorage.removeItem('homself.kiosk.token');
     if(response.status === 400) localStorage.removeItem(pendingKey); // Validation failed before any DB write.
     throw new Error(result.error || '접수 결과를 확인하지 못했습니다.');
   }
