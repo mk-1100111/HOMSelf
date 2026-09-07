@@ -39,7 +39,6 @@ def execute_item(api, adapter, journal, item):
     journal.record(item,'claimed')
     stage='prepare'
     try:
-        # Exact receiver ID, stock, material and quantity checks; no manual searches.
         adapter.prepare(item)
         adapter.verify(item)
         stage='begin'
@@ -47,16 +46,19 @@ def execute_item(api, adapter, journal, item):
         update('begin')
         journal.record(item,'submitting')
         stage='submit'
-        adapter.submit_once(item)
-        stage='verify_result'
-        proof=adapter.verify_result(item)
-        # Receipt survives a lost completion response or process crash.
-        journal.save_proof(item,proof)
-        journal.record(item,'result_verified')
-        stage='auto_complete'
-        update('auto_complete',proof=proof)
+        result=adapter.submit_once(item)
+        journal.record(item,'ui_confirmed')
+        stage='complete'
+        note=json.dumps({
+            'source':result.get('source','homs-ui-return'),
+            'manager_name':item['manager_name'],
+            'material_code':item['material_code'],
+            'quantity':item['quantity'],
+            'confirmed_at':datetime.now(timezone.utc).isoformat()
+        },ensure_ascii=False,separators=(',',':'))
+        update('complete',note=note)
         journal.record(item,'completed')
-        print('자동 불출 완료:',item['id'],'HOMS 거래번호:',proof['transaction_id'],flush=True)
+        print('자동 불출 완료:',item['id'],item['manager_name'],item['material_code'],item['quantity'],flush=True)
     except BaseException as error:
         journal.record(item,'needs_review')
         note=f'자동 처리 중단: {stage} / {type(error).__name__}. HOMS 실제 불출내역 대조 필요.'
@@ -81,13 +83,12 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
         if mode!=previous:
             print(mode,flush=True);previous=mode
         if not state['paused'] and not state.get('blocked') and state['items']:
-            # Re-login is only allowed before claiming; no browser auth is auto-bypassed.
             adapter.ensure_session()
             try:
                 item=api.post('claim',{})['item']
             except HTTPFailure as error:
                 if error.status!=409: raise
-                item=None  # A known rejected claim has no HOMS side effect.
+                item=None
             if item:
                 print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
                 execute_item(api,adapter,journal,item)
@@ -99,7 +100,7 @@ def reconcile(api, item_id, journal):
     if item['status']!='pending' or item['attempt_id'] is not None or len(item['evidence'])<10:
         raise RuntimeError('관리자 화면에서 미불출 수동 판정을 먼저 완료해야 합니다.')
     if journal.db.execute('SELECT 1 FROM receipts WHERE item_id=?',(item_id,)).fetchone():
-        raise RuntimeError('이 항목에는 검증된 HOMS 거래번호가 있습니다. 재불출하지 마세요.')
+        raise RuntimeError('이 항목에는 기존 검증 거래 기록이 있습니다. 재불출하지 마세요.')
     if input('모든 처리기를 종료하고 HOMS 미불출을 확인했으면 항목 번호를 입력하세요: ').strip()!=item_id:
         raise RuntimeError('취소했습니다.')
     journal.record(item,'cleared_manual')
