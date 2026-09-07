@@ -73,6 +73,7 @@ def execute_item(api, adapter, journal, item):
 def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
     """Only items captured by the current admin-started batch may be claimed."""
     previous=None
+    last_keepalive=0.0
     while not stop():
         try:
             api.post('heartbeat',{'mode':'live'})
@@ -91,6 +92,17 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:
             print(mode,flush=True);previous=mode
+
+        # HOMS 유휴 세션 유지: 배치/오류 작업이 없을 때만 60초마다 비파괴 GET을 보낸다.
+        now=time.monotonic()
+        if not state.get('batch_active') and not state.get('blocked') and now-last_keepalive>=60:
+            try:
+                adapter.keep_alive()
+            except Exception as error:
+                print('HOMS 세션 유지 요청 실패:',type(error).__name__,flush=True)
+            finally:
+                last_keepalive=now
+
         if state.get('batch_active') and not state.get('blocked') and state['items']:
             adapter.ensure_session()
             try:
