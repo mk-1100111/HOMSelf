@@ -1,13 +1,13 @@
 /* A lost response MUST retry the same key AND payload, never create a new request. */
 const pendingKey = 'homself.pending.v1';
-const kioskPinOk = token => /^\d{4}$/.test(token);
+const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
 window.getHomselfCatalog=async function(){
   try {
     let token=sessionStorage.getItem('homself.kiosk.token');
     if(!token) token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');
     if(!token)return null;
     token=token.trim();
-    if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다.');}
+    if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다. 기존 긴 키는 전환 기간에만 사용할 수 있습니다.');}
     const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});
     if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}
     sessionStorage.setItem('homself.kiosk.token',token);
