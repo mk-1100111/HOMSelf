@@ -64,7 +64,7 @@ class HomsAdapter:
         self.homs_handle = self.driver.current_window_handle
         self.driver.get(self.p['stock_url'])
         print('Chrome 준비 완료: HOMSelf 관리자 탭 + HOMS 탭', flush=True)
-        print('HOMS 탭에서 직접 로그인하세요. 로그인 정보는 프로그램에 저장하지 않습니다.', flush=True)
+        print('HOMS는 로그인 완료 상태로 사용합니다.', flush=True)
 
     def _switch_or_reopen(self, handle_name, url):
         handle = getattr(self, handle_name)
@@ -103,20 +103,17 @@ class HomsAdapter:
         return (e.get_attribute('value') or e.text or '').strip()
 
     def ensure_session(self):
-        """승인 건을 점유하기 전에 HOMS 로그인 상태를 확인한다."""
-        from selenium.webdriver.support.ui import WebDriverWait
+        """HOMS가 로그인된 상태라고 가정하고 재고조회 화면만 확인한다."""
         self.show_homs()
         self.driver.get(self.p['stock_url'])
         try:
-            WebDriverWait(self.driver, 3).until(
-                lambda _: any(e.is_displayed() for e in self.driver.find_elements(self.By.CSS_SELECTOR, self.p['stock_search_css']))
-            )
-            return
-        except Exception:
-            print('HOMS 로그인이 필요합니다. 현재 HOMS 탭에서 직접 로그인하세요.', flush=True)
-        WebDriverWait(self.driver, 300).until(
-            lambda _: any(e.is_displayed() for e in self.driver.find_elements(self.By.CSS_SELECTOR, self.p['stock_search_css']))
-        )
+            self.unique(self.p['stock_search_css'])
+        except Exception as error:
+            current = self.driver.current_url
+            raise RuntimeError(
+                'HOMS 재고조회 화면을 확인할 수 없습니다. '
+                f'현재 URL: {current} / 선택자: {self.p["stock_search_css"]}'
+            ) from error
 
     def fill(self, selector, value):
         from selenium.webdriver.common.keys import Keys
