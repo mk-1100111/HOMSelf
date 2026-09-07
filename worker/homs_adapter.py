@@ -1,5 +1,6 @@
-"""Automatic HOMS UI adapter. Importing this module does not open a browser."""
+"""Automatic HOMS UI adapter for the company PC browser workspace."""
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -27,18 +28,63 @@ def validate_profile(p):
 
 
 class HomsAdapter:
-    def __init__(self, profile):
+    def __init__(self, profile, admin_url=None, profile_dir=None):
         validate_profile(profile)
         from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
+
         self.p = profile
         self.By = By
-        self.driver = webdriver.Chrome()
-        self.driver.maximize_window()
-        self.wait = WebDriverWait(self.driver, 20)
+        self.admin_url = admin_url
+        self.admin_handle = None
+        self.homs_handle = None
         self.prepared_item_id = None
         self.ui_completed = False
+
+        options = Options()
+        if profile_dir:
+            profile_path = Path(profile_dir).resolve()
+            profile_path.mkdir(parents=True, exist_ok=True)
+            options.add_argument('--user-data-dir=' + str(profile_path))
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+        self.driver = webdriver.Chrome(options=options)
+        self.driver.maximize_window()
+        self.wait = WebDriverWait(self.driver, 20)
+        self._open_workspace()
+
+    def _open_workspace(self):
+        """한 Chrome 창에 관리자 탭과 HOMS 탭을 준비한다."""
+        if self.admin_url:
+            self.driver.get(self.admin_url)
+            self.admin_handle = self.driver.current_window_handle
+            self.driver.switch_to.new_window('tab')
+        self.homs_handle = self.driver.current_window_handle
+        self.driver.get(self.p['stock_url'])
+        print('Chrome 준비 완료: HOMSelf 관리자 탭 + HOMS 탭', flush=True)
+        print('HOMS 탭에서 직접 로그인하세요. 로그인 정보는 프로그램에 저장하지 않습니다.', flush=True)
+
+    def _switch_or_reopen(self, handle_name, url):
+        handle = getattr(self, handle_name)
+        handles = self.driver.window_handles
+        if handle and handle in handles:
+            self.driver.switch_to.window(handle)
+            return
+        self.driver.switch_to.new_window('tab')
+        setattr(self, handle_name, self.driver.current_window_handle)
+        self.driver.get(url)
+
+    def show_homs(self):
+        self._switch_or_reopen('homs_handle', self.p['stock_url'])
+
+    def show_admin(self, refresh=False):
+        if not self.admin_url:
+            return
+        self._switch_or_reopen('admin_handle', self.admin_url)
+        if refresh:
+            self.driver.refresh()
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
@@ -57,8 +103,9 @@ class HomsAdapter:
         return (e.get_attribute('value') or e.text or '').strip()
 
     def ensure_session(self):
-        """Claim 전에 HOMS 재고조회 화면까지 로그인 상태를 확인한다."""
+        """승인 건을 점유하기 전에 HOMS 로그인 상태를 확인한다."""
         from selenium.webdriver.support.ui import WebDriverWait
+        self.show_homs()
         self.driver.get(self.p['stock_url'])
         try:
             WebDriverWait(self.driver, 3).until(
@@ -66,7 +113,7 @@ class HomsAdapter:
             )
             return
         except Exception:
-            print('HOMS 브라우저에서 로그인한 뒤 재고조회 화면으로 이동하세요. 자동 감지합니다.', flush=True)
+            print('HOMS 로그인이 필요합니다. 현재 HOMS 탭에서 직접 로그인하세요.', flush=True)
         WebDriverWait(self.driver, 300).until(
             lambda _: any(e.is_displayed() for e in self.driver.find_elements(self.By.CSS_SELECTOR, self.p['stock_search_css']))
         )
@@ -86,13 +133,14 @@ class HomsAdapter:
         from selenium.webdriver.common.keys import Keys
         self.ui_completed = False
         self.prepared_item_id = None
+        self.show_homs()
         self.driver.get(self.p['stock_url'])
 
-        # 상품코드를 정확히 입력하고 조회한다.
+        # 1) 상품코드 입력 -> 조회
         self.fill(self.p['stock_search_css'], item['material_code'])
         self.unique(self.p['stock_query_xpath'], True).click()
 
-        # 상품코드 조회 결과는 check_0 한 건이어야 하며 해당 행에 요청 상품코드가 보여야 한다.
+        # 2) 상품코드 조회 결과 한 건(check_0) 선택
         checkbox = self.unique(self.p['stock_checkbox_xpath'], True)
         row = checkbox.find_element(self.By.XPATH, './ancestor::tr[1]')
         if item['material_code'] not in (row.text or ''):
@@ -102,19 +150,19 @@ class HomsAdapter:
         if not checkbox.is_selected():
             raise RuntimeError('조회 상품을 선택하지 못했습니다.')
 
-        # 자재별출고 팝업을 연다.
+        # 3) 자재별출고 팝업
         self.unique(self.p['release_open_xpath'], True).click()
 
-        # 작업자 이름은 입력 후 Enter로 HOMS에서 확정한다.
+        # 4) 작업자 이름 입력 후 Enter 확정
         receiver = self.unique(self.p['receiver_search_css'])
         receiver.clear()
         receiver.send_keys(item['manager_name'])
         receiver.send_keys(Keys.ENTER)
-        receiver = self.unique(self.p['receiver_search_css'])
-        if self.value(receiver) != item['manager_name']:
-            raise RuntimeError('작업자 이름 확정을 확인할 수 없습니다.')
+        self.wait.until(
+            lambda _: self.value(self.unique(self.p['receiver_search_css'], visible=False)) == item['manager_name']
+        )
 
-        # 승인된 요청 수량만 입력한다.
+        # 5) 승인 수량 입력
         self.fill(self.p['quantity_css'], item['quantity'])
         self.prepared_item_id = item['id']
         self.verify(item)
@@ -133,12 +181,12 @@ class HomsAdapter:
         from selenium.webdriver.support import expected_conditions as EC
         self.verify(item)
 
-        # 실제 출고 버튼 -> 확인 -> 완료 알림 순서. 이 구간은 재시도하지 않는다.
+        # 6) 출고 -> 확인 -> 완료 알림. 실제 출고 구간이므로 자동 재시도하지 않는다.
         self.unique(self.p['release_button_xpath'], True).click()
         self.unique(self.p['first_confirm_css']).click()
         self.unique(self.p['second_confirm_css']).click()
 
-        # 완료 알림이 닫히고 작업자 입력 화면으로 복귀해야 성공으로 본다.
+        # 7) 완료 알림이 닫힌 후 작업자 입력창으로 복귀하면 이번 UI 흐름을 완료로 본다.
         self.wait.until(EC.invisibility_of_element_located((self.By.CSS_SELECTOR, self.p['second_confirm_css'])))
         receiver = self.unique(self.p['receiver_search_css'])
         if not receiver.is_displayed() or not receiver.is_enabled():
