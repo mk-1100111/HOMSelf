@@ -1,6 +1,7 @@
-let token='';
+const adminTokenKey='homself.admin.token';
+let token=sessionStorage.getItem(adminTokenKey) || '';
 const $=id=>document.getElementById(id);
-const labels={pending:'접수',approved:'승인',claimed:'준비 중',submitting:'불출 중',completed:'완료',needs_review:'확인 필요',cancelled:'반려'};
+const labels={pending:'접수',approved:'승인',claimed:'준비 중',submitting:'불출 중',needs_review:'확인 필요',cancelled:'반려'};
 function message(text){$('message').textContent=text;}
 async function api(path,body){
   const response=await fetch('/api/admin/'+path,{method:body!==undefined?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})});
@@ -26,6 +27,14 @@ function utilityButton(text,fn,className=''){
   const b=document.createElement('button');b.type='button';b.textContent=text;b.className='action-button '+className;
   b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
   return b;
+}
+function completedIcon(){
+  const icon=document.createElement('span');
+  icon.className='completed-icon';
+  icon.textContent='✓';
+  icon.title='완료';
+  icon.setAttribute('aria-label','완료');
+  return icon;
 }
 let refreshing=false;
 async function refresh(){
@@ -83,7 +92,11 @@ async function refreshData(){
     const values=[new Date(item.created_at).toLocaleString(),item.manager_name,item.material_name+'\n'+item.material_code,item.quantity];
     for(const text of values){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}
     const statusCell=document.createElement('td');
-    const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status]||item.status;statusCell.append(pill);row.append(statusCell);
+    if(item.status==='completed') statusCell.append(completedIcon());
+    else {
+      const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status]||item.status;statusCell.append(pill);
+    }
+    row.append(statusCell);
     const cell=document.createElement('td');cell.className='decision-cell';
     if(['pending','approved','cancelled'].includes(item.status)){
       const locked=currentBatchIds.has(item.id);
@@ -96,21 +109,28 @@ async function refreshData(){
         utilityButton('불출 완료 확인',()=>action(item,'confirm_completed'),'confirm'),
         utilityButton('미불출 확인',()=>action(item,'confirm_not_submitted'))
       );
+    }else if(item.status==='completed'){
+      cell.append(completedIcon());
     }else{
-      const done=document.createElement('span');done.className='locked-text';done.textContent=item.status==='completed'?'처리 완료':'처리 중';cell.append(done);
+      const working=document.createElement('span');working.className='locked-text';working.textContent='처리 중';cell.append(working);
     }
-    cell.append(utilityButton('이력',async()=>{const history=await(await api('events/'+item.id)).json();$('db-panel').hidden=false;$('db-view').textContent=JSON.stringify(history,null,2);},'history'));
     row.append(cell);$('items').append(row);
   }
   message('마지막 갱신 '+new Date().toLocaleTimeString());
 }
 $('login').onsubmit=async e=>{
   e.preventDefault();
-  token=$('token').value.trim();$('token').value='';
-  if(!/^\d{4}$/.test(token)){message('관리자 PIN은 숫자 4자리입니다.');token='';return;}
-  try{await refresh();}catch(e){message(e.message);token='';}
+  const candidate=$('token').value.trim();$('token').value='';
+  if(!/^\d{4}$/.test(candidate)){message('관리자 PIN은 숫자 4자리입니다.');return;}
+  token=candidate;
+  try{
+    await refresh();
+    sessionStorage.setItem(adminTokenKey,token);
+  }catch(e){
+    message(e.message);token='';sessionStorage.removeItem(adminTokenKey);
+  }
 };
-$('logout').onclick=()=>{token='';location.reload();};
+$('logout').onclick=()=>{token='';sessionStorage.removeItem(adminTokenKey);location.reload();};
 $('bulk-approve').onclick=async()=>{
   const count=parseInt(($('bulk-approve').textContent.match(/\d+/)||['0'])[0],10);
   if(count<1)return;
@@ -124,3 +144,4 @@ $('start-batch').onclick=async()=>{
   try{const result=await(await api('batch/start',{})).json();message(result.count+'건 일괄 불출을 시작했습니다.');await refresh();}catch(e){message(e.message);}
 };
 setInterval(()=>{if(token && !document.hidden)refresh().catch(e=>message(e.message));},2000);
+if(token) refresh().catch(e=>{message(e.message);token='';sessionStorage.removeItem(adminTokenKey);});
