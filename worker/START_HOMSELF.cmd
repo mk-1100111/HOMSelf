@@ -13,15 +13,16 @@ if not exist ".venv\Scripts\python.exe" (
 if "%HOMSELF_WORKER_TOKEN%"=="" (
   echo HOMSELF_WORKER_TOKEN 환경변수가 없습니다.
   echo 기존 Render WORKER_TOKEN과 같은 값을 Windows 환경변수에 설정한 뒤 다시 실행하세요.
-  echo 예: setx HOMSELF_WORKER_TOKEN "Render의 WORKER_TOKEN 값"
   pause
   exit /b 1
 )
 
 echo.
-echo HOMSelf 회사 PC 자동불출을 시작합니다.
+echo HOMSelf 회사 PC 일괄 자동불출을 시작합니다.
 echo Chrome에 관리자 탭과 HOMS 탭이 열립니다.
-echo HOMS 로그인은 직접 진행하고, 이후 관리자 화면에서 승인하면 자동불출됩니다.
+echo 1. HOMS 로그인은 직접 진행합니다.
+echo 2. 관리자 화면에서 필요한 요청들을 각각 승인합니다.
+echo 3. 승인건 일괄 불출 버튼을 누르면 그 시점의 승인건만 순서대로 자동불출합니다.
 echo 종료하려면 이 창에서 Ctrl+C를 누르세요.
 echo.
 
