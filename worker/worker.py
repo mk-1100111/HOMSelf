@@ -1,4 +1,4 @@
-"""Approval-driven continuous worker. Normal processing never asks for terminal input."""
+"""Approval-driven batch worker. Approved items wait until the admin starts a release batch."""
 import argparse
 import json
 import os
@@ -59,10 +59,8 @@ def execute_item(api, adapter, journal, item):
         update('complete',note=note)
         journal.record(item,'completed')
         print('자동 불출 완료:',item['id'],item['manager_name'],item['material_code'],item['quantity'],flush=True)
-        try:
-            adapter.show_admin(refresh=True)
-        except Exception:
-            pass
+        try: adapter.show_admin(refresh=True)
+        except Exception: pass
     except BaseException as error:
         journal.record(item,'needs_review')
         note=f'자동 처리 중단: {stage} / {type(error).__name__}. HOMS 실제 불출내역 대조 필요.'
@@ -73,7 +71,7 @@ def execute_item(api, adapter, journal, item):
         raise
 
 def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
-    """Only idle polls reconnect. An uncertain claim/begin/release always stops."""
+    """Only items captured by the current admin-started batch may be claimed."""
     previous=None
     while not stop():
         try:
@@ -83,12 +81,17 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             print('대기 중 서버 연결 끊김. 불출 없이 연결을 재확인합니다.',flush=True)
             if once: raise
             sleep(min(30,poll_seconds*2));continue
-        if state.get('worker_protocol')!=2:
-            raise RuntimeError('서버가 자동처리 프로토콜 v2가 아닙니다. 새 코드 배포를 확인하세요.')
-        mode='일시정지' if state['paused'] else '확인 필요/다른 처리기 작업 중' if state.get('blocked') else '승인 요청 대기'
+        if state.get('worker_protocol')!=3:
+            raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
+        if state.get('blocked'):
+            mode='확인 필요/다른 처리기 작업 중'
+        elif state.get('batch_active'):
+            mode='일괄 불출 진행 중 / 남은 '+str(state.get('batch_remaining',0))+'건'
+        else:
+            mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:
             print(mode,flush=True);previous=mode
-        if not state['paused'] and not state.get('blocked') and state['items']:
+        if state.get('batch_active') and not state.get('blocked') and state['items']:
             adapter.ensure_session()
             try:
                 item=api.post('claim',{})['item']
@@ -98,6 +101,13 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             if item:
                 print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
                 execute_item(api,adapter,journal,item)
+                previous=None
+        elif state.get('batch_active') and not state.get('blocked') and not state['items'] and state.get('batch_remaining',0)==0:
+            api.post('batch/finish',{})
+            print('일괄 불출 완료. 이후 승인 건은 다음 불출 시작까지 대기합니다.',flush=True)
+            try: adapter.show_admin(refresh=True)
+            except Exception: pass
+            previous=None
         if once:return
         sleep(poll_seconds)
 
@@ -113,8 +123,8 @@ def reconcile(api, item_id, journal):
     print('로컬 차단 해제. 관리자 재승인 후 새 시도로 처리할 수 있습니다.')
 
 def main():
-    parser=argparse.ArgumentParser(description='HOMSelf — 기본은 비불출 연결 점검, --live는 승인 요청 자동 감시')
-    parser.add_argument('--live',action='store_true',help='승인된 요청을 계속 자동 처리')
+    parser=argparse.ArgumentParser(description='HOMSelf — 기본은 연결 점검, --live는 관리자 일괄 불출 배치를 감시')
+    parser.add_argument('--live',action='store_true',help='관리자가 시작한 일괄 불출 배치를 계속 감시')
     parser.add_argument('--once',action='store_true',help='--live와 함께 사용하면 감시 1회 후 종료')
     parser.add_argument('--reconcile',metavar='ITEM_ID',help='관리자 미불출 판정 이후 로컬 차단 해제')
     args=parser.parse_args()
@@ -149,8 +159,8 @@ def main():
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'))
             admin_url=cfg['server_url'].rstrip('/') + '/admin'
             adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile')
-            print('승인 요청 자동 감시 시작. 종료: Ctrl+C',flush=True)
-            print('사용 순서: HOMS 로그인 -> 관리자 탭에서 처리 허용(필요 시) -> 요청 승인',flush=True)
+            print('일괄 불출 감시 시작. 종료: Ctrl+C',flush=True)
+            print('사용 순서: HOMS 로그인 -> 요청별 승인 -> 관리자 화면에서 승인건 일괄 불출',flush=True)
             run_loop(api,adapter,journal,interval,once=args.once)
         finally:
             journal.db.close()
