@@ -1,15 +1,65 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HOMSelf 불출 관리</title><link rel="stylesheet" href="/public/admin.css"></head>
-<body><header><a href="/main">HOMSelf</a><h1>불출 요청 관리</h1></header>
-<main><section class="panel"><form id="login"><label>관리자 PIN <input id="token" type="password" inputmode="numeric" autocomplete="off" required></label>
-<button>연결</button><button type="button" id="logout">로그아웃</button></form><p id="message" role="status">관리자 PIN 인증 후 요청과 DB를 조회할 수 있습니다. 기존 긴 키는 전환 기간에만 호환됩니다.</p></section>
-<section class="panel" id="controls" hidden><h2 id="run-state"></h2><p id="worker-state"></p>
-<button id="pause" class="danger">전체 일시정지</button><button id="resume">처리 허용</button><button id="refresh">새로고침</button>
-<button id="inspect">DB 구조·데이터 보기</button><button id="backup">SQLite 백업 다운로드</button>
-<p>서버가 다시 시작되면 자동으로 일시정지합니다. 일시정지는 이미 HOMS에 전달된 불출을 취소하지 못합니다.</p>
-<p>수동 판정 전 회사 PC 프로그램을 종료하고, HOMS의 매니저·자재·수량·시각을 대조하세요.</p></section>
-<section class="panel"><h2>최근 요청 항목 <small>최대 1,000개</small></h2><div class="table-wrap"><table>
-<thead><tr><th>접수 시각 / 항목 번호</th><th>매니저</th><th>자재 / 코드</th><th>수량</th><th>상태</th><th>작업</th></tr></thead><tbody id="items"></tbody></table></div></section>
-<section class="panel" id="db-panel" hidden><h2>DB 구조 및 데이터</h2><p>각 테이블은 최대 100행 미리보기입니다. 전체 자료는 SQLite 백업으로 확인하세요.</p><pre id="db-view"></pre></section>
-</main><script src="/public/admin.js"></script></body></html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOMSelf 불출 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/public/admin.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/main">HOMSelf</a>
+  <h1>불출 요청 관리</h1>
+  <form id="login" class="pin-form">
+    <input id="token" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="관리자 PIN" autocomplete="off" required>
+    <button class="pin-connect">연결</button>
+    <button type="button" id="logout" class="pin-logout">로그아웃</button>
+  </form>
+</header>
+
+<main>
+  <section class="status-card" id="controls" hidden>
+    <div class="status-main">
+      <div>
+        <span class="eyebrow">불출 상태</span>
+        <h2 id="run-state">승인건 대기</h2>
+        <p id="queue-state" class="queue-state"></p>
+      </div>
+      <button id="start-batch" class="release-button">승인건 일괄 불출</button>
+    </div>
+    <div class="status-sub">
+      <span id="worker-state">회사 PC 연결 확인 중</span>
+      <span id="message" role="status">요청 정보를 불러오는 중입니다.</span>
+    </div>
+    <div class="secondary-actions">
+      <button id="pause" class="danger">불출 중지</button>
+      <button id="refresh">새로고침</button>
+      <button id="inspect">DB 보기</button>
+      <button id="backup">SQLite 백업</button>
+    </div>
+  </section>
+
+  <section class="request-panel">
+    <div class="section-title">
+      <h2>요청 목록</h2>
+      <span>승인은 대기열에만 추가되며, 일괄 불출 버튼을 눌러야 HOMS 처리가 시작됩니다.</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>접수 시각</th><th>매니저</th><th>자재</th><th>수량</th><th>상태</th><th>작업</th></tr></thead>
+        <tbody id="items"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="request-panel" id="db-panel" hidden>
+    <div class="section-title"><h2>DB 구조 및 데이터</h2><span>각 테이블 최대 100행 미리보기</span></div>
+    <pre id="db-view"></pre>
+  </section>
+</main>
+<script src="/public/admin.js"></script>
+</body>
+</html>
