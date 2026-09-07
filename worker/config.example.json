@@ -2,7 +2,7 @@
   "server_url": "https://homself.onrender.com",
   "allow_local_http": false,
   "selectors_file": "selectors.json",
-  "poll_seconds": 5,
+  "poll_seconds": 2,
   "backup_repository": "mk-1100111/HOMSelf-data",
   "backup_branch": "main"
 }
