@@ -4,11 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 from worker import Journal, execute_item, run_loop
 from common import ConnectionFailure
-from homs_adapter import parse_stock, validate_profile, verify_history_record
+from homs_adapter import parse_stock, validate_profile
 
 ITEM={'id':'test-item','attempt_id':'attempt-1','manager_name':'TEST','material_code':'123','quantity':2}
 def proof(item):
-    return {'source':'homs-history','transaction_id':'tx-'+item['id'],'receiver_id':'staff-test',
+    return {'source':'legacy-homs-history','transaction_id':'tx-'+item['id'],
             'manager_name':item['manager_name'],'material_code':item['material_code'],
             'quantity':item['quantity'],'status':'completed'}
 class FakeAPI:
@@ -25,8 +25,10 @@ class FakeAdapter:
     def ensure_session(self):pass
     def prepare(self,item):pass
     def verify(self,item):pass
-    def submit_once(self,item):self.clicks+=1
-    def verify_result(self,item):return proof(item)
+    def submit_once(self,item):
+        self.clicks+=1
+        return {'source':'homs-ui-return','manager_name':item['manager_name'],
+                'material_code':item['material_code'],'quantity':item['quantity']}
 class SafetyTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory()
@@ -41,7 +43,7 @@ class SafetyTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):execute_item(api,adapter,self.journal,ITEM)
         return adapter.clicks
     def test_lost_begin_never_clicks(self):self.assertEqual(self.run_case('begin'),0)
-    def test_lost_complete_never_resubmits(self):self.assertEqual(self.run_case('auto_complete'),1)
+    def test_lost_complete_never_resubmits(self):self.assertEqual(self.run_case('complete'),1)
     def test_success_without_input_never_resubmits(self):self.assertEqual(self.run_case(),1)
     def test_continuous_processing_two_items_without_input(self):
         api=FakeAPI(items=[ITEM,{**ITEM,'id':'second','attempt_id':'attempt-2'}]);adapter=FakeAdapter()
@@ -73,32 +75,35 @@ class SafetyTests(unittest.TestCase):
         api.post=uncertain;adapter=FakeAdapter()
         with self.assertRaises(ConnectionFailure):run_loop(api,adapter,self.journal,sleep=lambda _:self.fail('must stop'))
         self.assertEqual(adapter.clicks,0)
-    def test_bad_result_stops_loop_and_marks_review(self):
+    def test_submit_failure_stops_loop_and_marks_review(self):
         api=FakeAPI(items=[ITEM]);adapter=FakeAdapter()
-        def bad(_):raise RuntimeError('history mismatch')
-        adapter.verify_result=bad
+        def bad(_):
+            adapter.clicks+=1
+            raise RuntimeError('HOMS submit failed')
+        adapter.submit_once=bad
         with self.assertRaises(RuntimeError):run_loop(api,adapter,self.journal,sleep=lambda _:self.fail('must stop'))
         self.assertEqual(adapter.clicks,1);self.assertTrue(api.calls[-1].endswith('/review'))
-        self.assertFalse(any(c.endswith('/auto_complete') for c in api.calls))
+        self.assertFalse(any(c.endswith('/complete') for c in api.calls))
     def test_legacy_server_protocol_stops(self):
         api=FakeAPI();api.get=lambda _:{'paused':False,'items':[ITEM]}
         with self.assertRaises(RuntimeError):run_loop(api,FakeAdapter(),self.journal)
         self.assertNotIn('claim',api.calls)
-    def test_local_receipt_cannot_be_reused(self):
+    def test_legacy_local_receipt_cannot_be_reused(self):
         self.journal.save_proof(ITEM,proof(ITEM))
         import sqlite3
         with self.assertRaises(sqlite3.IntegrityError):self.journal.save_proof({**ITEM,'id':'other'},proof(ITEM))
-    def test_history_requires_every_exact_field(self):
-        record={'transaction_id':'txn-123','receiver_id':'staff-test','manager_name':'TEST',
-                'material_code':'123','quantity':'2','status':'DONE'}
-        result=verify_history_record(record,ITEM,'staff-test','txn-123','DONE')
-        self.assertEqual(result['status'],'completed')
-        for key in record:
-            with self.subTest(field=key),self.assertRaises(RuntimeError):
-                verify_history_record({**record,key:'wrong'},ITEM,'staff-test','txn-123','DONE')
     def test_unknown_stock_and_profile_block(self):
         self.assertEqual(parse_stock('1,000'),1000)
         for value in ['-1','stock(5)','N/A','1 2','1,0']:
             with self.assertRaises(RuntimeError):parse_stock(value)
         with self.assertRaises(RuntimeError):validate_profile({})
+        good={
+            'profile_version':2,'validated_on_company_pc':True,
+            'stock_url':'https://homs.biz/stock/stockInquiry','stock_search_css':'#srcGoodId',
+            'stock_query_xpath':'//*[@id="query"]','stock_checkbox_xpath':'//*[@id="check_0"]',
+            'release_open_xpath':'//*[@id="release"]','receiver_search_css':'#srcReceiverName',
+            'quantity_css':'#srcStockCnt_0','release_button_xpath':'//*[@id="submit"]',
+            'first_confirm_css':'#_confirmModalOk','second_confirm_css':'#_alertModalOk'
+        }
+        validate_profile(good)
 if __name__=='__main__':unittest.main()
