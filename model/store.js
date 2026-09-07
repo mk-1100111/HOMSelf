@@ -104,12 +104,18 @@ class Store {
       check(this.batchActive(),'진행 중인 일괄 불출이 없습니다.');
       check(!this.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get(),'처리 중 또는 확인 필요 항목이 있습니다.');
       check(this.batchRemaining()===0,'현재 배치에 아직 불출할 항목이 남아 있습니다.');
+      const rejected=this.db.prepare("SELECT id FROM request_items WHERE status='cancelled'").all();
+      const now=Date.now();
+      for(const row of rejected) {
+        this.db.prepare("UPDATE request_items SET status='completed',attempt_id=NULL,updated_at=?,evidence='rejected_batch_completed' WHERE id=?").run(now,row.id);
+        this.event(row.id,'rejected_completed','worker','batch_finished');
+      }
       this.setSetting('paused','1');
       this.setSetting('batch_active','0');
       this.setSetting('batch_items','[]');
-      this.event(null,'batch_completed','worker');
+      this.event(null,'batch_completed','worker',JSON.stringify({rejected_completed:rejected.length}));
       this.pruneItems();
-      return {paused:true,batch_active:false};
+      return {paused:true,batch_active:false,rejected_completed:rejected.length};
     });
   }
   submit(body,key) {
