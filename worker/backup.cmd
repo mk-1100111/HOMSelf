@@ -1,5 +1,14 @@
 @echo off
-chcp 65001 >nul
+setlocal
 cd /d "%~dp0"
-.venv\Scripts\python.exe backup.py
+if errorlevel 1 exit /b 1
+set "PYTHONUTF8=1"
+if not exist ".venv\Scripts\python.exe" goto missing
+".venv\Scripts\python.exe" backup.py
+set "RESULT=%ERRORLEVEL%"
 pause
+exit /b %RESULT%
+:missing
+echo Python environment is missing. Run setup.cmd first.
+pause
+exit /b 1
