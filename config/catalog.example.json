@@ -1,0 +1,8 @@
+{
+  "demo": true,
+  "managers": ["테스트매니저"],
+  "materials": [
+    {"material_code":"DEMO001", "material_name":"샘플 자재", "material_unit":1},
+    {"material_code":"DEMO002", "material_name":"샘플 묶음 자재", "material_unit":10}
+  ]
+}
