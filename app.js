@@ -7,9 +7,13 @@ const path = require('node:path');
 const { Store, check, loadCatalog } = require('./model/store');
 
 function createApp(config = process.env) {
-  const keys = ['ADMIN_TOKEN','KIOSK_TOKEN','WORKER_TOKEN'].map(k => config[k]);
-  check(keys.every(k => typeof k === 'string' && k.length >= 32) && new Set(keys).size === 3,
-    '서로 다른 ADMIN_TOKEN/KIOSK_TOKEN/WORKER_TOKEN(각 32자 이상)을 설정하세요.');
+  const adminPin=String(config.ADMIN_TOKEN || '');
+  const kioskPin=String(config.KIOSK_TOKEN || '');
+  const workerToken=String(config.WORKER_TOKEN || '');
+  check(/^\d{4}$/.test(adminPin),'ADMIN_TOKEN은 숫자 4자리 PIN으로 설정하세요.');
+  check(/^\d{4}$/.test(kioskPin),'KIOSK_TOKEN은 숫자 4자리 PIN으로 설정하세요.');
+  check(adminPin !== kioskPin,'ADMIN_TOKEN과 KIOSK_TOKEN은 서로 다른 4자리 PIN이어야 합니다.');
+  check(workerToken.length >= 32,'WORKER_TOKEN은 32자 이상의 내부 통신키로 설정하세요.');
   check(config.DB_PATH && path.isAbsolute(config.DB_PATH), 'DB_PATH는 절대 경로여야 합니다.');
   if (config.NODE_ENV === 'production') {
     if (config.DB_PATH.startsWith('/tmp/')) {
@@ -22,6 +26,7 @@ function createApp(config = process.env) {
   if(config.NODE_ENV === 'production') check(catalog.demo !== true,'샘플 기준정보로 운영할 수 없습니다. 비공개 저장소의 실제 기준정보를 설정하세요.');
   const store = new Store(config.DB_PATH,catalog);
   const app = express(); app.disable('x-powered-by');
+  app.set('trust proxy',1);
   app.set('view engine','ejs'); app.set('views',path.join(__dirname,'views'));
   // Existing EJS has inline handlers. Keep compatibility without permitting frames.
   app.use(helmet({contentSecurityPolicy:{directives:{
@@ -33,10 +38,28 @@ function createApp(config = process.env) {
   app.use('/public',express.static(path.join(__dirname,'public')));
   app.get('/ping',(req,res) => res.send('pong'));
   app.get('/healthz',(req,res) => {store.db.prepare('SELECT 1').get();res.json({ok:true});});
+  const authFailures=new Map();
   const auth = role => (req,res,next) => {
+    const pinRole=role === 'ADMIN' || role === 'KIOSK';
+    const key=pinRole ? role+':'+req.ip : null;
+    const now=Date.now();
+    if(key){
+      const state=authFailures.get(key);
+      if(state && state.blockedUntil>now) return res.status(429).json({error:'인증 시도가 너무 많습니다. 5분 후 다시 시도하세요.'});
+      if(state && state.blockedUntil && state.blockedUntil<=now) authFailures.delete(key);
+    }
     const supplied=String(req.get('authorization') || '').replace(/^Bearer /,'');
     const digest=s => crypto.createHash('sha256').update(s).digest();
-    if(!crypto.timingSafeEqual(digest(supplied),digest(config[role+'_TOKEN']))) return res.status(401).json({error:'인증키를 확인하세요.'});
+    if(!crypto.timingSafeEqual(digest(supplied),digest(config[role+'_TOKEN']))) {
+      if(key){
+        const prior=authFailures.get(key) || {failures:0,blockedUntil:0};
+        prior.failures+=1;
+        if(prior.failures>=5){prior.failures=0;prior.blockedUntil=now+5*60*1000;authFailures.set(key,prior);return res.status(429).json({error:'인증 시도가 너무 많습니다. 5분 후 다시 시도하세요.'});}
+        authFailures.set(key,prior);
+      }
+      return res.status(401).json({error:'인증키를 확인하세요.'});
+    }
+    if(key) authFailures.delete(key);
     next();
   };
   app.use('/api',(req,res,next) => {res.set('Cache-Control','no-store');next();});
