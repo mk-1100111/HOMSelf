@@ -20,6 +20,7 @@ class Store {
       this.setSetting('batch_active','0');
       this.setSetting('batch_items','[]');
       this.quarantine('server_restart');
+      this.pruneItems();
     });
   }
   tx(fn) {
@@ -53,6 +54,25 @@ class Store {
     for(const id of ids) if(this.db.prepare("SELECT 1 FROM request_items WHERE id=? AND status IN ('approved','claimed','submitting')").get(id)) n++;
     return n;
   }
+  pruneItems(limit=1000) {
+    let total=this.db.prepare('SELECT COUNT(*) AS n FROM request_items').get().n;
+    if(total<=limit) return 0;
+    const batchIds=new Set(this.batchItems());
+    let removed=0;
+    while(total>limit) {
+      const candidates=this.db.prepare("SELECT i.id,i.request_id FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.status IN ('completed','cancelled') ORDER BY r.created_at ASC,i.updated_at ASC,i.id ASC LIMIT 50").all();
+      const victim=candidates.find(row=>!batchIds.has(row.id));
+      if(!victim) break;
+      this.db.prepare('DELETE FROM events WHERE item_id=?').run(victim.id);
+      this.db.prepare('DELETE FROM homs_receipts WHERE item_id=?').run(victim.id);
+      this.db.prepare('DELETE FROM request_items WHERE id=?').run(victim.id);
+      if(!this.db.prepare('SELECT 1 FROM request_items WHERE request_id=? LIMIT 1').get(victim.request_id)) {
+        this.db.prepare('DELETE FROM requests WHERE id=?').run(victim.request_id);
+      }
+      total--;removed++;
+    }
+    return removed;
+  }
   pause(value) {
     check(typeof value === 'boolean','paused는 boolean이어야 합니다.',400);
     if(!value) return this.startBatch();
@@ -70,7 +90,7 @@ class Store {
       check(this.paused() && !this.batchActive(),'이미 일괄 불출이 진행 중입니다.');
       check(!this.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get(),'처리 중 또는 확인 필요 항목을 먼저 확인하세요.');
       const rows=this.db.prepare("SELECT id FROM request_items WHERE status='approved' ORDER BY updated_at,id").all();
-      check(rows.length>0,'승인된 요청이 없습니다.');
+      check(rows.length>0,'승인 시트에 불출할 요청이 없습니다.');
       const ids=rows.map(r=>r.id);
       this.setSetting('batch_items',JSON.stringify(ids));
       this.setSetting('batch_active','1');
@@ -88,6 +108,7 @@ class Store {
       this.setSetting('batch_active','0');
       this.setSetting('batch_items','[]');
       this.event(null,'batch_completed','worker');
+      this.pruneItems();
       return {paused:true,batch_active:false};
     });
   }
@@ -115,28 +136,60 @@ class Store {
           .run(itemId,id,item.material_code,item.material_name,item.quantity,now);
         this.event(itemId,'pending','kiosk');
       }
+      this.pruneItems();
       return {request_id:id,duplicate:false};
     });
   }
   items() {return this.db.prepare('SELECT i.*,r.manager_name,r.created_at FROM request_items i JOIN requests r ON r.id=i.request_id ORDER BY r.created_at DESC,i.id LIMIT 1000').all();}
   item(id) {
-    const item=this.db.prepare('SELECT i.*,r.manager_name FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.id=?').get(id);
+    const item=this.db.prepare('SELECT i.*,r.manager_name,r.created_at FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.id=?').get(id);
     check(item,'항목을 찾을 수 없습니다.',404);return item;
+  }
+  approvalSheet() {
+    const batchIds=new Set(this.batchItems());
+    return this.db.prepare("SELECT i.*,r.manager_name,r.created_at FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.status IN ('approved','claimed','submitting') ORDER BY i.updated_at,i.id LIMIT 1000").all()
+      .map(item=>({...item,current_batch:this.batchActive() && batchIds.has(item.id)}));
+  }
+  approveAll() {
+    return this.tx(() => {
+      const rows=this.db.prepare("SELECT id FROM request_items WHERE status='pending' ORDER BY updated_at,id").all();
+      const now=Date.now();
+      for(const row of rows) {
+        this.db.prepare("UPDATE request_items SET status='approved',attempt_id=NULL,updated_at=?,evidence='' WHERE id=?").run(now,row.id);
+        this.event(row.id,'approved','admin','bulk');
+      }
+      return {count:rows.length};
+    });
   }
   adminAction(id,action,note) {
     return this.tx(() => {
-      const item=this.item(id);let status;
-      if(action === 'approve') {check(item.status === 'pending','접수 상태만 승인할 수 있습니다.');status='approved';}
-      else if(action === 'cancel') {check(['pending','approved'].includes(item.status),'처리 중인 항목은 취소할 수 없습니다.');status='cancelled';}
-      else {
+      const item=this.item(id);let status,eventType=action;
+      const batchLocked=this.batchActive() && this.batchItems().includes(id);
+      if(action === 'toggle_approve') {
+        check(['pending','approved','cancelled'].includes(item.status),'현재 상태에서는 승인 선택을 바꿀 수 없습니다.');
+        check(!batchLocked,'현재 일괄 불출에 포함된 항목은 선택을 바꿀 수 없습니다.');
+        status=item.status === 'approved' ? 'pending' : 'approved';
+        eventType=status === 'approved' ? 'approved' : 'approval_removed';
+      } else if(action === 'toggle_reject') {
+        check(['pending','approved','cancelled'].includes(item.status),'현재 상태에서는 반려 선택을 바꿀 수 없습니다.');
+        check(!batchLocked,'현재 일괄 불출에 포함된 항목은 선택을 바꿀 수 없습니다.');
+        status=item.status === 'cancelled' ? 'pending' : 'cancelled';
+        eventType=status === 'cancelled' ? 'rejected' : 'rejection_removed';
+      } else if(action === 'approve') {
+        check(item.status === 'pending','접수 상태만 승인할 수 있습니다.');status='approved';eventType='approved';
+      } else if(action === 'cancel') {
+        check(['pending','approved'].includes(item.status),'처리 중인 항목은 변경할 수 없습니다.');status='cancelled';eventType='rejected';
+      } else {
         check(item.status === 'needs_review','확인 필요 상태만 수동 판정할 수 있습니다.');
-        check(this.paused(),'먼저 전체 일시정지하고 회사 PC 프로그램을 종료하세요.');
+        check(this.paused(),'먼저 불출을 중지하고 회사 PC 프로그램을 종료하세요.');
         check(typeof note === 'string' && note.trim().length >= 10 && note.length <= 1000,'HOMS 내역 확인 근거를 10자 이상 입력하세요.',400);
         check(['confirm_completed','confirm_not_submitted'].includes(action),'잘못된 작업입니다.',400);
         status=action === 'confirm_completed' ? 'completed' : 'pending';
       }
       this.db.prepare('UPDATE request_items SET status=?,attempt_id=NULL,updated_at=?,evidence=? WHERE id=?').run(status,Date.now(),note || '',id);
-      this.event(id,action,'admin',note || '');return this.item(id);
+      this.event(id,eventType,'admin',note || '');
+      this.pruneItems();
+      return this.item(id);
     });
   }
   heartbeat(mode) {
@@ -192,16 +245,19 @@ class Store {
         check(item.status === 'submitting','관리자 화면에서 수동 확인하세요.');
         this.db.prepare("UPDATE request_items SET status='completed',updated_at=?,evidence=? WHERE id=?").run(Date.now(),note,id);
       } else check(false,'잘못된 작업입니다.',400);
-      this.event(id,action,'worker',note || '');return this.item(id);
+      this.event(id,action,'worker',note || '');
+      this.pruneItems();
+      return this.item(id);
     });
   }
   overview() {
     const approved=this.db.prepare("SELECT COUNT(*) AS n FROM request_items WHERE status='approved'").get().n;
+    const pending=this.db.prepare("SELECT COUNT(*) AS n FROM request_items WHERE status='pending'").get().n;
     const batchIds=new Set(this.batchItems());
     let batchApproved=0;
     if(this.batchActive()) for(const row of this.db.prepare("SELECT id FROM request_items WHERE status='approved'").all()) if(batchIds.has(row.id)) batchApproved++;
     return {paused:this.paused(),batch_active:this.batchActive(),batch_remaining:this.batchRemaining(),approved_waiting:this.batchActive()?approved-batchApproved:approved,
-      counts:this.db.prepare('SELECT status,COUNT(*) AS count FROM request_items GROUP BY status').all(),
+      pending_waiting:pending,approval_sheet:this.approvalSheet(),counts:this.db.prepare('SELECT status,COUNT(*) AS count FROM request_items GROUP BY status').all(),
       worker:this.db.prepare('SELECT * FROM worker_status WHERE id=1').get() || null,schema_version:2,items:this.items()};
   }
   inspection() {return {schema,tables:['requests','request_items','events','settings','worker_status','homs_receipts'].map(name => ({name,
