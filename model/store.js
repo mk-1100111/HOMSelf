@@ -15,13 +15,20 @@ class Store {
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     check(this.db.prepare('PRAGMA user_version').get().user_version <= 2, '이 프로그램보다 새로운 DB입니다.');
     this.db.exec(schema);
-    this.tx(() => {this.db.prepare("UPDATE settings SET value='1' WHERE key='paused'").run();this.quarantine('server_restart');});
+    this.tx(() => {
+      this.setSetting('paused','1');
+      this.setSetting('batch_active','0');
+      this.setSetting('batch_items','[]');
+      this.quarantine('server_restart');
+    });
   }
   tx(fn) {
     this.db.exec('BEGIN IMMEDIATE');
     try { const result = fn(); this.db.exec('COMMIT'); return result; }
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
+  setting(key) {return this.db.prepare('SELECT value FROM settings WHERE key=?').get(key)?.value;}
+  setSetting(key,value) {this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,String(value));}
   event(id, type, actor, note = '') {
     this.db.prepare('INSERT INTO events(item_id,event_type,actor,note,created_at) VALUES(?,?,?,?,?)').run(id,type,actor,note,Date.now());
   }
@@ -31,13 +38,57 @@ class Store {
       this.event(item.id,'needs_review','system',reason);
     }
   }
-  paused() {return this.db.prepare("SELECT value FROM settings WHERE key='paused'").get().value === '1';}
+  paused() {return this.setting('paused') === '1';}
+  batchActive() {return this.setting('batch_active') === '1';}
+  batchItems() {
+    try {
+      const value=JSON.parse(this.setting('batch_items') || '[]');
+      return Array.isArray(value) ? value.filter(id=>typeof id==='string') : [];
+    } catch {return [];}
+  }
+  batchRemaining() {
+    const ids=this.batchItems();
+    if(!ids.length) return 0;
+    let n=0;
+    for(const id of ids) if(this.db.prepare("SELECT 1 FROM request_items WHERE id=? AND status IN ('approved','claimed','submitting')").get(id)) n++;
+    return n;
+  }
   pause(value) {
     check(typeof value === 'boolean','paused는 boolean이어야 합니다.',400);
+    if(!value) return this.startBatch();
     return this.tx(() => {
-      this.db.prepare("UPDATE settings SET value=? WHERE key='paused'").run(value ? '1' : '0');
-      if(value) this.quarantine('operator_pause');
-      this.event(null,value ? 'paused' : 'resumed','admin');return {paused:value};
+      this.setSetting('paused','1');
+      this.setSetting('batch_active','0');
+      this.setSetting('batch_items','[]');
+      this.quarantine('operator_pause');
+      this.event(null,'paused','admin');
+      return {paused:true,batch_active:false};
+    });
+  }
+  startBatch() {
+    return this.tx(() => {
+      check(this.paused() && !this.batchActive(),'이미 일괄 불출이 진행 중입니다.');
+      check(!this.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get(),'처리 중 또는 확인 필요 항목을 먼저 확인하세요.');
+      const rows=this.db.prepare("SELECT id FROM request_items WHERE status='approved' ORDER BY updated_at,id").all();
+      check(rows.length>0,'승인된 요청이 없습니다.');
+      const ids=rows.map(r=>r.id);
+      this.setSetting('batch_items',JSON.stringify(ids));
+      this.setSetting('batch_active','1');
+      this.setSetting('paused','0');
+      this.event(null,'batch_started','admin',JSON.stringify({count:ids.length}));
+      return {paused:false,batch_active:true,count:ids.length};
+    });
+  }
+  finishBatch() {
+    return this.tx(() => {
+      check(this.batchActive(),'진행 중인 일괄 불출이 없습니다.');
+      check(!this.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get(),'처리 중 또는 확인 필요 항목이 있습니다.');
+      check(this.batchRemaining()===0,'현재 배치에 아직 불출할 항목이 남아 있습니다.');
+      this.setSetting('paused','1');
+      this.setSetting('batch_active','0');
+      this.setSetting('batch_items','[]');
+      this.event(null,'batch_completed','worker');
+      return {paused:true,batch_active:false};
     });
   }
   submit(body,key) {
@@ -91,20 +142,26 @@ class Store {
   heartbeat(mode) {
     check(['check','live'].includes(mode),'잘못된 모드입니다.',400);
     this.db.prepare('INSERT INTO worker_status VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen,mode=excluded.mode').run(Date.now(),mode);
-    return {paused:this.paused(),schema_version:2,worker_protocol:2};
+    return {paused:this.paused(),batch_active:this.batchActive(),schema_version:2,worker_protocol:3};
   }
   preview() {
     const blocked=this.db.prepare("SELECT id,status FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get();
-    return {paused:this.paused(),worker_protocol:2,blocked:blocked || null,items:this.db.prepare("SELECT i.id,i.request_id,i.material_code,i.material_name,i.quantity,i.status,r.manager_name FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.status='approved' ORDER BY i.updated_at,i.id LIMIT 50").all()};
+    const allowed=new Set(this.batchActive() ? this.batchItems() : []);
+    const all=this.db.prepare("SELECT i.id,i.request_id,i.material_code,i.material_name,i.quantity,i.status,r.manager_name FROM request_items i JOIN requests r ON r.id=i.request_id WHERE i.status='approved' ORDER BY i.updated_at,i.id LIMIT 1000").all();
+    const items=this.batchActive() ? all.filter(item=>allowed.has(item.id)).slice(0,50) : [];
+    return {paused:this.paused(),batch_active:this.batchActive(),batch_remaining:this.batchRemaining(),worker_protocol:3,blocked:blocked || null,items};
   }
   claim() {
     return this.tx(() => {
-      check(!this.paused(),'자동 불출이 일시정지되어 있습니다.');
+      check(!this.paused() && this.batchActive(),'일괄 불출이 시작되지 않았습니다.');
       check(!this.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting','needs_review') LIMIT 1").get(),'처리 중 또는 확인 필요 항목을 먼저 확인하세요.');
-      const item=this.db.prepare("SELECT id FROM request_items WHERE status='approved' ORDER BY updated_at,id LIMIT 1").get();
-      if(!item) return null;
-      this.db.prepare("UPDATE request_items SET status='claimed',attempt_id=?,updated_at=? WHERE id=?").run(randomUUID(),Date.now(),item.id);
-      this.event(item.id,'claimed','worker');return this.item(item.id);
+      let next=null;
+      for(const id of this.batchItems()) {
+        if(this.db.prepare("SELECT id FROM request_items WHERE id=? AND status='approved'").get(id)){next=id;break;}
+      }
+      if(!next) return null;
+      this.db.prepare("UPDATE request_items SET status='claimed',attempt_id=?,updated_at=? WHERE id=?").run(randomUUID(),Date.now(),next);
+      this.event(next,'claimed','worker');return this.item(next);
     });
   }
   transition(id,attempt,action,note,proof) {
@@ -112,7 +169,7 @@ class Store {
       const item=this.item(id);
       check(typeof attempt === 'string' && item.attempt_id === attempt,'처리 권한이 만료됐습니다. 재불출하지 마세요.');
       if(action === 'begin') {
-        check(!this.paused() && item.status === 'claimed','불출 시작이 허용되지 않습니다.');
+        check(!this.paused() && this.batchActive() && item.status === 'claimed','불출 시작이 허용되지 않습니다.');
         check(Date.now()-item.updated_at < 30*60*1000,'처리 준비 제한시간을 초과했습니다.');
         this.db.prepare("UPDATE request_items SET status='submitting',updated_at=? WHERE id=?").run(Date.now(),id);
       } else if(action === 'review') {
@@ -138,8 +195,15 @@ class Store {
       this.event(id,action,'worker',note || '');return this.item(id);
     });
   }
-  overview() {return {paused:this.paused(),counts:this.db.prepare('SELECT status,COUNT(*) AS count FROM request_items GROUP BY status').all(),
-    worker:this.db.prepare('SELECT * FROM worker_status WHERE id=1').get() || null,schema_version:2,items:this.items()};}
+  overview() {
+    const approved=this.db.prepare("SELECT COUNT(*) AS n FROM request_items WHERE status='approved'").get().n;
+    const batchIds=new Set(this.batchItems());
+    let batchApproved=0;
+    if(this.batchActive()) for(const row of this.db.prepare("SELECT id FROM request_items WHERE status='approved'").all()) if(batchIds.has(row.id)) batchApproved++;
+    return {paused:this.paused(),batch_active:this.batchActive(),batch_remaining:this.batchRemaining(),approved_waiting:this.batchActive()?approved-batchApproved:approved,
+      counts:this.db.prepare('SELECT status,COUNT(*) AS count FROM request_items GROUP BY status').all(),
+      worker:this.db.prepare('SELECT * FROM worker_status WHERE id=1').get() || null,schema_version:2,items:this.items()};
+  }
   inspection() {return {schema,tables:['requests','request_items','events','settings','worker_status','homs_receipts'].map(name => ({name,
     count:this.db.prepare(`SELECT COUNT(*) AS n FROM ${name}`).get().n,rows:this.db.prepare(`SELECT * FROM ${name} LIMIT 100`).all()}))};}
   snapshot(destination) {this.db.prepare('VACUUM INTO ?').run(destination);}
