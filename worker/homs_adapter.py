@@ -183,12 +183,22 @@ class HomsAdapter:
         self.unique(self.p['first_confirm_css']).click()
         self.unique(self.p['second_confirm_css']).click()
 
-        # 7) 완료 알림이 닫힌 후 작업자 입력창으로 복귀하면 이번 UI 흐름을 완료로 본다.
+        # 7) 완료 알림이 닫힌 후 작업자 입력창으로 복귀했는지 확인한다.
         self.wait.until(EC.invisibility_of_element_located((self.By.CSS_SELECTOR, self.p['second_confirm_css'])))
         receiver = self.unique(self.p['receiver_search_css'])
         if not receiver.is_displayed() or not receiver.is_enabled():
             raise RuntimeError('출고 완료 후 작업자 입력 화면으로 복귀하지 않았습니다.')
+
+        # 8) 자재별출고 팝업에서 취소를 눌러 재고조회 화면으로 복귀한다.
+        close_xpath = self.p.get('release_close_xpath') or '//*[@id="stockSaveClose"]'
+        self.unique(close_xpath, True).click()
+        self.wait.until(EC.invisibility_of_element_located((self.By.CSS_SELECTOR, self.p['receiver_search_css'])))
+        stock_search = self.unique(self.p['stock_search_css'])
+        if not stock_search.is_displayed() or not stock_search.is_enabled():
+            raise RuntimeError('출고 완료 후 재고조회 화면으로 복귀하지 않았습니다.')
+
         self.ui_completed = True
+        self.prepared_item_id = None
         return {
             'source': 'homs-ui-return',
             'manager_name': item['manager_name'],
