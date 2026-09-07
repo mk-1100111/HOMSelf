@@ -1,6 +1,39 @@
 /* A lost response MUST retry the same key AND payload, never create a new request. */
 const pendingKey = 'homself.pending.v1';
 const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
+
+function showRequestSuccess(){
+  return new Promise(resolve=>{
+    let style=document.getElementById('homself-success-style');
+    if(!style){
+      style=document.createElement('style');
+      style.id='homself-success-style';
+      style.textContent=`
+        .homself-success-overlay{position:fixed;inset:0;z-index:20000;background:rgba(20,24,30,.58);display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Jua',sans-serif}
+        .homself-success-card{width:min(520px,94vw);background:#fff;border-radius:24px;padding:42px 32px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+        .homself-success-icon{width:72px;height:72px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:#d1e7dd;color:#198754;font-size:42px;line-height:1}
+        .homself-success-title{margin:0;font-size:2.2rem;font-weight:400;color:#20242b}
+        .homself-success-text{margin:16px 0 28px;color:#606b78;font-size:1.25rem;line-height:1.5}
+        .homself-success-button{width:100%;border:0;border-radius:14px;padding:15px 20px;background:#0d6efd;color:#fff;font:inherit;font-size:1.3rem;cursor:pointer}
+        @media(max-width:600px){.homself-success-card{padding:34px 22px 24px}.homself-success-title{font-size:1.9rem}.homself-success-text{font-size:1.1rem}}
+      `;
+      document.head.appendChild(style);
+    }
+    const overlay=document.createElement('div');
+    overlay.className='homself-success-overlay';
+    overlay.innerHTML=`<div class="homself-success-card" role="dialog" aria-modal="true" aria-labelledby="homself-success-title">
+      <div class="homself-success-icon">✓</div>
+      <h2 class="homself-success-title" id="homself-success-title">요청 접수 완료</h2>
+      <p class="homself-success-text">관리자 승인 후 불출이 진행됩니다.</p>
+      <button class="homself-success-button" type="button">확인</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    const btn=overlay.querySelector('button');
+    btn.focus();
+    btn.onclick=()=>{overlay.remove();resolve();};
+  });
+}
+
 window.getHomselfCatalog=async function(){
   try {
     let token=sessionStorage.getItem('homself.kiosk.token');
@@ -30,11 +63,11 @@ async function transmitPending() {
   const result=await response.json();
   if(!response.ok) {
     if(response.status === 401 || response.status === 429) sessionStorage.removeItem('homself.kiosk.token');
-    if(response.status === 400) localStorage.removeItem(pendingKey); // Validation failed before any DB write.
+    if(response.status === 400) localStorage.removeItem(pendingKey);
     throw new Error(result.error || '접수 결과를 확인하지 못했습니다.');
   }
   localStorage.removeItem(pendingKey);
-  alert('요청 접수 완료\n접수번호: '+result.request_id+'\n관리자 승인 후 HOMS 불출이 진행됩니다.');
+  await showRequestSuccess();
   location.assign('/main');
 }
 window.sendCart=async function() {
@@ -67,5 +100,6 @@ if(notice && localStorage.getItem(pendingKey)) {
   const button=document.createElement('button');button.textContent='같은 요청 재확인';
   button.onclick=async()=>{button.disabled=true;try{await transmitPending();}catch(e){alert(e.message);}finally{button.disabled=false;}};
   notice.append(button);
-  document.getElementById('manager-lists').style.display='none';
+  const managerLists=document.getElementById('manager-lists');
+  if(managerLists) managerLists.style.display='none';
 }
