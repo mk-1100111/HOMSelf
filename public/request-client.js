@@ -10,28 +10,59 @@ function showRequestSuccess(){
       style=document.createElement('style');
       style.id='homself-success-style';
       style.textContent=`
-        .homself-success-overlay{position:fixed;inset:0;z-index:20000;background:rgba(20,24,30,.58);display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Jua',sans-serif}
-        .homself-success-card{width:min(520px,94vw);background:#fff;border-radius:24px;padding:42px 32px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.28)}
+        .homself-success-overlay{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Jua',sans-serif;overflow:hidden;background:#111}
+        .homself-success-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;filter:brightness(.72);transform:scale(1.01)}
+        .homself-success-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.38))}
+        .homself-success-card{position:relative;z-index:2;width:min(520px,94vw);background:rgba(255,255,255,.94);backdrop-filter:blur(5px);border-radius:24px;padding:42px 32px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
         .homself-success-icon{width:72px;height:72px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:#d1e7dd;color:#198754;font-size:42px;line-height:1}
         .homself-success-title{margin:0;font-size:2.2rem;font-weight:400;color:#20242b}
-        .homself-success-text{margin:16px 0 28px;color:#606b78;font-size:1.25rem;line-height:1.5}
+        .homself-success-text{margin:16px 0 8px;color:#606b78;font-size:1.25rem;line-height:1.5}
+        .homself-success-countdown{margin:0 0 24px;color:#7a8490;font-size:1rem}
         .homself-success-button{width:100%;border:0;border-radius:14px;padding:15px 20px;background:#0d6efd;color:#fff;font:inherit;font-size:1.3rem;cursor:pointer}
         @media(max-width:600px){.homself-success-card{padding:34px 22px 24px}.homself-success-title{font-size:1.9rem}.homself-success-text{font-size:1.1rem}}
       `;
       document.head.appendChild(style);
     }
+
+    const imageNumber=Math.floor(Math.random()*11)+1;
+    const backgroundSrc='/public/static/img/main_img/main'+imageNumber+'.png';
     const overlay=document.createElement('div');
     overlay.className='homself-success-overlay';
-    overlay.innerHTML=`<div class="homself-success-card" role="dialog" aria-modal="true" aria-labelledby="homself-success-title">
-      <div class="homself-success-icon">✓</div>
-      <h2 class="homself-success-title" id="homself-success-title">요청 접수 완료</h2>
-      <p class="homself-success-text">관리자 승인 후 불출이 진행됩니다.</p>
-      <button class="homself-success-button" type="button">확인</button>
-    </div>`;
+    overlay.innerHTML=`
+      <img class="homself-success-bg" src="${backgroundSrc}" alt="">
+      <div class="homself-success-shade"></div>
+      <div class="homself-success-card" role="dialog" aria-modal="true" aria-labelledby="homself-success-title">
+        <div class="homself-success-icon">✓</div>
+        <h2 class="homself-success-title" id="homself-success-title">요청 접수 완료</h2>
+        <p class="homself-success-text">관리자 승인 후 불출이 진행됩니다.</p>
+        <p class="homself-success-countdown"><span>3</span>초 후 자동으로 확인됩니다.</p>
+        <button class="homself-success-button" type="button">확인</button>
+      </div>`;
     document.body.appendChild(overlay);
+
     const btn=overlay.querySelector('button');
+    const countdown=overlay.querySelector('.homself-success-countdown span');
+    let remaining=3;
+    let done=false;
+    let timer=null;
+    let interval=null;
+
+    const finish=()=>{
+      if(done)return;
+      done=true;
+      clearTimeout(timer);
+      clearInterval(interval);
+      overlay.remove();
+      resolve();
+    };
+
     btn.focus();
-    btn.onclick=()=>{overlay.remove();resolve();};
+    btn.onclick=finish;
+    interval=setInterval(()=>{
+      remaining-=1;
+      if(remaining>0) countdown.textContent=String(remaining);
+    },1000);
+    timer=setTimeout(finish,3000);
   });
 }
 
