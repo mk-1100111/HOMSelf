@@ -38,7 +38,7 @@
 </div>
 
 <div class="offcanvas-body">
-<form class="d-flex mt-3">
+<form class="d-flex mt-3" action="/admin">
 <button class="btn btn-danger" type="submit">관리자로그인</button>
 </form>
 </div>
@@ -48,25 +48,22 @@
 </nav>
 
 
+<div id="pending-notice" role="alert" style="padding:1rem;margin-top:5rem" hidden></div>
 <div class="row row-cols-3 row-cols-md-3 g-2" id="manager-lists"></div>
 
 
 
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.11.8/umd/popper.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 
-$(document).ready(function(){
+$(document).ready(async function(){
 
-let manager_list = [
-"구자원","구재화","권석천","권성영","권필중","김대선","김동민","김선영","김승준","김영광",
-"김유빈","김해원","김홍렬","민천의","방기영","백광융","서동국","서동재","신동경","안종훈",
-"유정모","육강심","이상운","이상칠","이성주","이창규","이흥준","임규열","임정우","장민수",
-"장성일","장현숙","정대성","전정하","정윤정","정준권","조준희","최성근","최승철","최승현",
-"추우영","한신희"
-]
+const catalog = await window.getHomselfCatalog();
+if (!catalog) return;
+let manager_list = catalog.managers;
 
 for(let i=0;i<manager_list.length;i++){
 
@@ -171,5 +168,6 @@ location.reload()
 
 </script>
 
+<script src="/public/request-client.js"></script>
 </body>
 </html>

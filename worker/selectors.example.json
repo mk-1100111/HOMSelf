@@ -1,0 +1,16 @@
+{
+  "validated_on_company_pc": false,
+  "stock_rows": "#wrap > div:nth-child(3) > div:nth-child(2) > table > tbody > tr",
+  "code_cell_index": null,
+  "stock_cell_index": 7,
+  "release_open_xpath": "//*[@id=\"frm\"]/div[2]/div[3]/a[4]",
+  "receiver_search_css": "#srcReceiverName",
+  "selected_receiver_id_css": "",
+  "selected_receiver_name_css": "",
+  "popup_material_code_css": "",
+  "quantity_css": "#srcStockCnt_0",
+  "release_button_xpath": "//*[@id=\"_popup0\"]/div[2]/div/div/div/div[2]/a[2]",
+  "first_confirm_css": "#_confirmModalOk",
+  "second_confirm_css": "",
+  "manager_ids": {}
+}
