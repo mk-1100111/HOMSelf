@@ -9,22 +9,11 @@ async function api(path,body){
   return response;
 }
 async function action(item,operation){
-  let note='';
-  if(operation.startsWith('confirm_')){
-    if(!confirm('회사 PC 프로그램을 종료했으며 실제 HOMS 불출내역을 확인했습니까?'))return;
-    note=prompt('확인 근거: 조회 시각·담당자·자재·수량 등을 적으세요.') || '';
-    if(note.trim().length<10)return;
-  }
-  await api('items/'+item.id,{action:operation,note});await refresh();
+  await api('items/'+item.id,{action:operation,note:''});await refresh();
 }
 function decisionButton(text,type,active,fn,disabled=false){
   const b=document.createElement('button');
   b.type='button';b.textContent=text;b.className='decision-button '+type+(active?' active':'');b.disabled=disabled;
-  b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
-  return b;
-}
-function utilityButton(text,fn,className=''){
-  const b=document.createElement('button');b.type='button';b.textContent=text;b.className='action-button '+className;
   b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
   return b;
 }
@@ -92,12 +81,7 @@ async function refreshData(){
         decisionButton('승인','approve',item.status==='approved',()=>action(item,'toggle_approve'),locked),
         decisionButton('반려','reject',item.status==='cancelled',()=>action(item,'toggle_reject'),locked)
       );
-    }else if(item.status==='needs_review'){
-      cell.append(
-        utilityButton('불출 완료 확인',()=>action(item,'confirm_completed'),'confirm'),
-        utilityButton('미불출 확인',()=>action(item,'confirm_not_submitted'))
-      );
-    }else if(item.status!=='completed'){
+    }else if(item.status!=='completed' && item.status!=='needs_review'){
       const working=document.createElement('span');working.className='locked-text';working.textContent='처리 중';cell.append(working);
     }
     row.append(cell);$('items').append(row);
