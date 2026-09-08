@@ -1,13 +1,14 @@
 """One-shot HOMS catalog/image synchronizer for the company PC.
 
-Run this with the normal HOMSelf Worker STOPPED because it reuses the same Chrome
-profile. It performs four jobs:
-  1) Read HOMS inventory metadata (code/name/specification).
-  2) Update the local HOMSelf-data/config/catalog.json by material_code.
-  3) Rename/copy existing HOMSelf material images from name-based filenames to
-     code-based filenames, then crawl missing images from HOMS.
-  4) Commit and push only the catalog and material-image changes with local git.
+This tool intentionally does NOT use the HOMS stock-inquiry page. After login it uses
+HOMS's global search bar for each material_code already present in HOMSelf-data:
+  1) search material_code in //*[@id="_searchBar"]
+  2) read the first result card around //*[@id="spl_thum_0_0"]/img
+  3) update the matching material_name/specification when they can be parsed safely
+  4) save a missing image as public/static/img/material_list/<material_code>.png
+  5) commit/push HOMSelf-data catalog and HOMSelf images with local git
 
+Existing name-based image files are converted to code-based filenames first.
 No stock quantities are written to GitHub.
 """
 from __future__ import annotations
@@ -20,13 +21,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from selenium import webdriver
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parent
 HOMSELF_ROOT = ROOT.parent
@@ -34,12 +36,9 @@ DEFAULT_DATA_ROOT = HOMSELF_ROOT.parent / 'HOMSelf-data'
 IMAGE_DIR = HOMSELF_ROOT / 'public' / 'static' / 'img' / 'material_list'
 SEARCH_XPATH = '//*[@id="_searchBar"]'
 IMAGE_XPATH = '//*[@id="spl_thum_0_0"]/img'
-DISPLAY_XPATH = '//*[@id="srcDisplayYn"]'
-QUERY_XPATH = '//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]'
-PAGE_SIZE_XPATH = '//*[@id="frm"]/div[2]/div[2]/select'
-ROWS_XPATH = '//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr'
-HEADER_XPATH = '//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]'
 IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
+LOGIN_WAIT_SECONDS = 180
+RESULT_WAIT_SECONDS = 15
 
 
 def run_git(repo: Path, *args: str, capture: bool = False) -> str:
@@ -86,133 +85,6 @@ def save_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
-def parse_material_cell(text: str) -> tuple[str, str, str]:
-    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
-    if not lines:
-        raise RuntimeError('상품코드/상품명/규격 셀이 비어 있습니다.')
-
-    def clean(value: str) -> str:
-        return re.sub(r'^(상품코드|상품명|규격)\s*[:：]?\s*', '', value).strip()
-
-    lines = [clean(line) for line in lines if clean(line)]
-    if len(lines) >= 2:
-        code, name = lines[0], lines[1]
-        specification = ' / '.join(lines[2:])
-    else:
-        match = re.search(r'([A-Za-z0-9_-]{4,80})', lines[0])
-        if not match:
-            raise RuntimeError('상품코드를 해석할 수 없습니다: ' + lines[0])
-        code = match.group(1)
-        name = (lines[0][:match.start()] + lines[0][match.end():]).strip(' /|-') or code
-        specification = ''
-    code_match = re.search(r'([A-Za-z0-9_-]{1,80})', code)
-    if not code_match:
-        raise RuntimeError('상품코드 형식이 잘못됐습니다: ' + code)
-    return code_match.group(1), name.strip(), specification.strip()
-
-
-def open_browser(selectors: dict, profile_dir: Path):
-    options = Options()
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    options.add_argument('--user-data-dir=' + str(profile_dir.resolve()))
-    options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
-    options.add_experimental_option('useAutomationExtension', False)
-    driver = webdriver.Chrome(options=options)
-    driver.maximize_window()
-    driver.get(selectors['stock_url'])
-    return driver
-
-
-def select_all(driver) -> None:
-    element = WebDriverWait(driver, 15).until(lambda d: d.find_element(By.XPATH, DISPLAY_XPATH))
-    Select(element).select_by_visible_text('전체')
-
-
-def select_90(driver) -> None:
-    def apply(_):
-        try:
-            element = driver.find_element(By.XPATH, PAGE_SIZE_XPATH)
-            select = Select(element)
-            option = next((o for o in select.options if '90' in (o.text or '')), None)
-            if not option:
-                return False
-            select.select_by_value(option.get_attribute('value'))
-            return '90' in (Select(driver.find_element(By.XPATH, PAGE_SIZE_XPATH)).first_selected_option.text or '')
-        except StaleElementReferenceException:
-            return False
-    WebDriverWait(driver, 15, poll_frequency=.35).until(apply)
-
-
-def crawl_metadata(driver) -> list[dict]:
-    select_all(driver)
-    driver.find_element(By.XPATH, QUERY_XPATH).click()
-    WebDriverWait(driver, 20).until(lambda d: d.find_element(By.XPATH, HEADER_XPATH))
-    WebDriverWait(driver, 20).until(
-        lambda d: d.execute_script(
-            'return document.evaluate(arguments[0],document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null).snapshotLength;',
-            ROWS_XPATH
-        ) > 0
-    )
-    select_90(driver)
-    time.sleep(1.0)
-    raw_rows = driver.execute_script("""
-        const xp=arguments[0];
-        const snap=document.evaluate(xp,document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
-        const out=[];
-        for(let i=0;i<snap.snapshotLength;i++){
-          const row=snap.snapshotItem(i), cells=row.querySelectorAll('td');
-          if(cells.length>=4) out.push((cells[3].innerText||'').trim());
-        }
-        return out;
-    """, ROWS_XPATH)
-    rows, seen = [], set()
-    for text in raw_rows:
-        code, name, specification = parse_material_cell(text)
-        if code in seen:
-            continue
-        seen.add(code)
-        rows.append({'material_code': code, 'material_name': name, 'specification': specification})
-    if not rows:
-        raise RuntimeError('HOMS 기준정보를 읽지 못했습니다.')
-    print('HOMS 기준정보 조회:', len(rows), '건', flush=True)
-    return rows
-
-
-def update_catalog(catalog: dict, rows: list[dict]) -> tuple[int, int]:
-    materials = catalog.setdefault('materials', [])
-    by_code = {str(item.get('material_code')): item for item in materials if isinstance(item, dict)}
-    updated = added = 0
-    for row in rows:
-        code = row['material_code']
-        target = by_code.get(code)
-        if target is None:
-            target = {'material_code': code, 'material_name': row['material_name'], 'material_unit': 1, 'visible': True}
-            materials.append(target)
-            by_code[code] = target
-            added += 1
-        changed = False
-        if target.get('material_name') != row['material_name']:
-            target['material_name'] = row['material_name']
-            changed = True
-        specification = row.get('specification', '').strip()
-        if specification:
-            if target.get('specification') != specification:
-                target['specification'] = specification
-                changed = True
-        elif 'specification' in target:
-            target.pop('specification', None)
-            changed = True
-        if 'material_unit' not in target or not isinstance(target.get('material_unit'), int) or target['material_unit'] < 1:
-            target['material_unit'] = 1
-            changed = True
-        if 'visible' not in target:
-            target['visible'] = True
-            changed = True
-        if changed and target is not None:
-            updated += 1
-    return updated, added
-
-
 def image_candidates(image_dir: Path, code: str) -> list[Path]:
     return [image_dir / (code + ext) for ext in IMAGE_EXTENSIONS]
 
@@ -227,9 +99,11 @@ def migrate_name_images(image_dir: Path, catalog_before: dict) -> tuple[int, int
     for item in catalog_before.get('materials', []):
         if not isinstance(item, dict):
             continue
-        name, code = str(item.get('material_name', '')).strip(), str(item.get('material_code', '')).strip()
+        name = str(item.get('material_name', '')).strip()
+        code = str(item.get('material_code', '')).strip()
         if name and code:
             by_name.setdefault(name, []).append(code)
+
     copied = removed = 0
     for source in list(image_dir.iterdir()):
         if not source.is_file() or source.suffix.lower() not in IMAGE_EXTENSIONS:
@@ -251,85 +125,209 @@ def migrate_name_images(image_dir: Path, catalog_before: dict) -> tuple[int, int
     return copied, removed
 
 
-def ready_image(driver, old_element, old_src):
-    nodes = driver.find_elements(By.XPATH, IMAGE_XPATH)
-    if len(nodes) != 1:
-        return False
-    image = nodes[0]
-    if not image.is_displayed():
-        return False
-    src = (image.get_attribute('src') or '').strip()
-    if not src:
-        return False
-    lowered = src.lower()
-    if any(word in lowered for word in ('noimage', 'no_image', 'blank.gif', 'placeholder')):
-        return False
+def homs_home_url(selectors: dict) -> str:
+    raw = str(selectors.get('stock_url') or 'https://homs.biz/').strip()
+    parsed = urlsplit(raw)
+    if parsed.scheme != 'https' or parsed.hostname != 'homs.biz':
+        return 'https://homs.biz/'
+    return f'{parsed.scheme}://{parsed.netloc}/'
+
+
+def open_browser(selectors: dict, profile_dir: Path):
+    options = Options()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    options.add_argument('--user-data-dir=' + str(profile_dir.resolve()))
+    options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+    options.add_experimental_option('useAutomationExtension', False)
+    driver = webdriver.Chrome(options=options)
+    driver.maximize_window()
+    driver.get(homs_home_url(selectors))
+    return driver
+
+
+def wait_for_homs_search(driver) -> None:
+    print('HOMS 로그인 후 상단 검색창이 나타날 때까지 기다립니다.', flush=True)
     try:
-        if int(driver.execute_script('return arguments[0].naturalWidth||0;', image) or 0) < 2:
-            return False
-        if old_element is not None:
-            try:
-                if image.id == old_element.id and src == old_src:
-                    return False
-            except StaleElementReferenceException:
-                pass
-    except StaleElementReferenceException:
-        return False
-    return image
+        WebDriverWait(driver, LOGIN_WAIT_SECONDS, poll_frequency=.5).until(
+            lambda d: _visible_search(d)
+        )
+    except TimeoutException as error:
+        raise RuntimeError(
+            f'HOMS 검색창을 {LOGIN_WAIT_SECONDS}초 동안 확인하지 못했습니다. '
+            f'현재 URL: {driver.current_url} / XPath: {SEARCH_XPATH}'
+        ) from error
+    print('HOMS 로그인/검색창 확인 완료:', driver.current_url, flush=True)
 
 
-def crawl_one_image(driver, code: str) -> bytes | None:
-    old_element = None
+def _visible_search(driver):
+    nodes = driver.find_elements(By.XPATH, SEARCH_XPATH)
+    return nodes[0] if len(nodes) == 1 and nodes[0].is_displayed() and nodes[0].is_enabled() else False
+
+
+def _result_snapshot(driver, code: str) -> dict | None:
+    """Return the first search result image and the smallest nearby text block.
+
+    HOMS markup can change. Instead of hardcoding a second fragile XPath for name/spec,
+    walk upward from the known first-result thumbnail and choose the smallest ancestor
+    that contains the searched product code. Metadata is updated only when parsing is
+    confident; otherwise existing catalog values are preserved.
+    """
+    script = r"""
+        const xp=arguments[0], code=String(arguments[1]);
+        const img=document.evaluate(xp,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;
+        if(!img || !img.offsetParent) return null;
+        const src=(img.currentSrc||img.src||'').trim();
+        const nw=Number(img.naturalWidth||img.width||0), nh=Number(img.naturalHeight||img.height||0);
+        let node=img, best='', fallback='';
+        for(let i=0;i<10 && node;i++,node=node.parentElement){
+            const text=(node.innerText||'').replace(/\r/g,'').trim();
+            if(text && (!fallback || text.length<fallback.length) && text.length<=1800) fallback=text;
+            if(text && text.includes(code) && text.length<=1800 && (!best || text.length<best.length)) best=text;
+        }
+        return {src:src,width:nw,height:nh,text:best||fallback||''};
+    """
+    return driver.execute_script(script, IMAGE_XPATH, code)
+
+
+def search_one(driver, code: str) -> tuple[object | None, str, str]:
     old_src = ''
-    old_nodes = driver.find_elements(By.XPATH, IMAGE_XPATH)
-    if len(old_nodes) == 1:
-        old_element = old_nodes[0]
-        try:
-            old_src = (old_element.get_attribute('src') or '').strip()
-        except StaleElementReferenceException:
-            old_element = None
-    search = WebDriverWait(driver, 12).until(lambda d: d.find_element(By.XPATH, SEARCH_XPATH))
-    search.click();search.send_keys(Keys.CONTROL, 'a');search.send_keys(Keys.BACKSPACE);search.send_keys(code);search.send_keys(Keys.ENTER)
+    old = _result_snapshot(driver, code) or {}
+    old_src = str(old.get('src') or '')
+
+    search = WebDriverWait(driver, 12).until(lambda d: _visible_search(d))
+    search.click()
+    search.send_keys(Keys.CONTROL, 'a')
+    search.send_keys(Keys.BACKSPACE)
+    search.send_keys(code)
+    search.send_keys(Keys.ENTER)
+
+    def settled(_):
+        snap = _result_snapshot(driver, code)
+        if not snap:
+            return False
+        src = str(snap.get('src') or '').strip()
+        text = str(snap.get('text') or '').strip()
+        width = int(snap.get('width') or 0)
+        height = int(snap.get('height') or 0)
+        if not src or width < 2 or height < 2:
+            return False
+        lowered = src.lower()
+        if any(word in lowered for word in ('noimage', 'no_image', 'blank.gif', 'placeholder')):
+            # No-image result can still provide valid metadata.
+            return snap if code in text else False
+        if code in text or (old_src and src != old_src) or not old_src:
+            return snap
+        return False
+
     try:
-        image = WebDriverWait(driver, 12, poll_frequency=.35).until(lambda _: ready_image(driver, old_element, old_src))
+        snap = WebDriverWait(driver, RESULT_WAIT_SECONDS, poll_frequency=.35).until(settled)
     except TimeoutException:
-        # Some HOMS searches reuse the same img element/src. Give the settled result one last check.
-        time.sleep(.8)
-        nodes = driver.find_elements(By.XPATH, IMAGE_XPATH)
-        if len(nodes) != 1 or not nodes[0].is_displayed():
-            return None
-        image = nodes[0]
-        if not (image.get_attribute('src') or '').strip():
-            return None
-    time.sleep(.2)
-    return image.screenshot_as_png or None
+        return None, '', ''
+
+    nodes = driver.find_elements(By.XPATH, IMAGE_XPATH)
+    image = nodes[0] if len(nodes) == 1 and nodes[0].is_displayed() else None
+    return image, str(snap.get('src') or ''), str(snap.get('text') or '')
 
 
-def crawl_missing_images(driver, catalog: dict, image_dir: Path) -> tuple[int, int]:
-    saved = skipped = 0
-    materials = [x for x in catalog.get('materials', []) if isinstance(x, dict)]
-    targets = [x for x in materials if not existing_code_image(image_dir, str(x.get('material_code', '')))]
-    print('이미지 없는 부자재:', len(targets), '건', flush=True)
-    for index, item in enumerate(targets, 1):
-        code = str(item.get('material_code', '')).strip()
-        if not code:
+def clean_result_lines(text: str) -> list[str]:
+    ignored = {
+        '상세보기', '바로가기', '검색', '장바구니', '신청', '선택', '재고', '상품코드', '상품명', '규격'
+    }
+    out: list[str] = []
+    for raw in str(text).replace('\r', '\n').split('\n'):
+        line = re.sub(r'\s+', ' ', raw).strip()
+        line = re.sub(r'^(상품코드|상품명|규격)\s*[:：]?\s*', '', line).strip()
+        if not line or line in ignored:
             continue
-        print(f'이미지 검색 {index}/{len(targets)}:', code, item.get('material_name', ''), flush=True)
-        try:
-            png = crawl_one_image(driver, code)
-            if not png:
-                skipped += 1
-                print('이미지 없음 - 건너뜀:', code, flush=True)
+        if line not in out:
+            out.append(line)
+    return out
+
+
+def parse_result_metadata(text: str, code: str, current_name: str) -> tuple[str | None, str | None]:
+    """Conservative parser: never overwrite catalog data unless the searched code is visible."""
+    if code not in str(text):
+        return None, None
+    lines = clean_result_lines(text)
+    normalized: list[str] = []
+    for line in lines:
+        if line == code:
+            continue
+        if code in line:
+            line = line.replace(code, '').strip(' -|/·:：')
+            if not line:
                 continue
-            target = image_dir / f'{code}.png'
-            target.write_bytes(png)
-            saved += 1
-            print('이미지 저장:', target.name, flush=True)
+        # Skip obvious UI/count/price-only strings.
+        if re.fullmatch(r'[\d,]+(?:원|개|EA)?', line, re.I):
+            continue
+        normalized.append(line)
+
+    if not normalized:
+        return None, None
+
+    # Prefer the existing name when HOMS still displays it; otherwise first meaningful line.
+    name = next((line for line in normalized if current_name and line == current_name), normalized[0])
+    rest = [line for line in normalized if line != name]
+    specification = ' / '.join(rest[:4]).strip() if rest else ''
+    return name, specification
+
+
+def update_one_catalog_item(item: dict, name: str | None, specification: str | None) -> bool:
+    changed = False
+    if name and item.get('material_name') != name:
+        print('상품명 수정:', item.get('material_code'), repr(item.get('material_name')), '->', repr(name), flush=True)
+        item['material_name'] = name
+        changed = True
+    if specification is not None:
+        specification = specification.strip()
+        if specification and item.get('specification', '') != specification:
+            print('규격 수정:', item.get('material_code'), '->', specification, flush=True)
+            item['specification'] = specification
+            changed = True
+    return changed
+
+
+def sync_catalog_and_images(driver, catalog: dict, image_dir: Path, no_images: bool) -> tuple[int, int, int]:
+    materials = [x for x in catalog.get('materials', []) if isinstance(x, dict) and str(x.get('material_code', '')).strip()]
+    metadata_updated = images_saved = skipped = 0
+    print('검색 대상 부자재:', len(materials), '건', flush=True)
+
+    for index, item in enumerate(materials, 1):
+        code = str(item.get('material_code', '')).strip()
+        current_name = str(item.get('material_name', '')).strip()
+        has_image = existing_code_image(image_dir, code) is not None
+        print(f'HOMS 검색 {index}/{len(materials)}:', code, current_name, flush=True)
+        try:
+            image, src, text = search_one(driver, code)
+            if not src and not text:
+                skipped += 1
+                print('검색 결과 없음 - 기존 정보 유지:', code, flush=True)
+                continue
+
+            name, specification = parse_result_metadata(text, code, current_name)
+            if name is None:
+                print('이름/규격 자동 해석 보류 - 기존 정보 유지:', code, flush=True)
+            elif update_one_catalog_item(item, name, specification):
+                metadata_updated += 1
+
+            if not no_images and not has_image:
+                if image is None:
+                    print('이미지 없음 - 건너뜀:', code, flush=True)
+                else:
+                    png = image.screenshot_as_png
+                    if png:
+                        target = image_dir / f'{code}.png'
+                        target.write_bytes(png)
+                        images_saved += 1
+                        print('이미지 저장:', target.name, flush=True)
+                    else:
+                        print('이미지 캡처 실패 - 건너뜀:', code, flush=True)
         except Exception as error:
             skipped += 1
-            print('이미지 검색 실패:', code, type(error).__name__, str(error), flush=True)
+            print('처리 실패 - 기존 정보 유지:', code, type(error).__name__, str(error), flush=True)
         time.sleep(.35)
-    return saved, skipped
+
+    return metadata_updated, images_saved, skipped
 
 
 def commit_if_changed(repo: Path, add_path: str, message: str, branch: str) -> bool:
@@ -345,9 +343,9 @@ def commit_if_changed(repo: Path, add_path: str, message: str, branch: str) -> b
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='HOMS 기준정보/부자재 이미지 일괄 동기화')
+    parser = argparse.ArgumentParser(description='HOMS 검색 기반 기준정보/부자재 이미지 일괄 동기화')
     parser.add_argument('--data-repo', type=Path, default=DEFAULT_DATA_ROOT, help='HOMSelf-data 로컬 저장소 경로')
-    parser.add_argument('--no-images', action='store_true', help='이미지 크롤링은 건너뛰고 이름/규격만 갱신')
+    parser.add_argument('--no-images', action='store_true', help='이미지 저장은 건너뛰고 이름/규격만 갱신')
     parser.add_argument('--no-push', action='store_true', help='파일만 수정하고 git commit/push는 하지 않음')
     args = parser.parse_args()
 
@@ -370,26 +368,25 @@ def main() -> None:
     selectors = load_json(selectors_path)
     catalog = load_json(catalog_path)
     catalog_before = json.loads(json.dumps(catalog, ensure_ascii=False))
+
     copied, removed = migrate_name_images(IMAGE_DIR, catalog_before)
     print('기존 이미지 코드화 완료: 생성', copied, '개 / 이름 파일 제거', removed, '개', flush=True)
-
     print('주의: 일반 Worker를 종료한 상태에서 실행해야 Chrome 프로필 충돌이 없습니다.', flush=True)
+
     driver = open_browser(selectors, ROOT / 'runtime' / 'chrome_profile')
     try:
-        rows = crawl_metadata(driver)
-        updated, added = update_catalog(catalog, rows)
+        wait_for_homs_search(driver)
+        updated, saved, skipped = sync_catalog_and_images(driver, catalog, IMAGE_DIR, args.no_images)
         save_json(catalog_path, catalog)
-        print('catalog 갱신: 기존 수정', updated, '건 / 신규 추가', added, '건', flush=True)
-        if not args.no_images:
-            saved, skipped = crawl_missing_images(driver, catalog, IMAGE_DIR)
-            print('이미지 크롤링: 저장', saved, '건 / 건너뜀', skipped, '건', flush=True)
+        print('HOMS 검색 동기화 완료: 기준정보 수정', updated, '건 / 이미지 저장', saved, '건 / 검색 실패', skipped, '건', flush=True)
     finally:
         driver.quit()
 
     if args.no_push:
         print('--no-push 지정: Git commit/push 생략', flush=True)
         return
-    commit_if_changed(data_root, 'config/catalog.json', 'Sync HOMSelf material names and specifications from HOMS', 'main')
+
+    commit_if_changed(data_root, 'config/catalog.json', 'Sync HOMSelf material names and specifications from HOMS search', 'main')
     commit_if_changed(HOMSELF_ROOT, 'public/static/img/material_list', 'Sync HOMSelf material images by material code', 'master')
 
 
