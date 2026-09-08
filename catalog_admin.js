@@ -85,31 +85,42 @@ function installCatalogAdmin({app,auth,catalog,store}){
   });
 
   app.post('/api/worker/catalog-sync',auth('WORKER'),(req,res)=>{
+    const legacy=req.body&&req.body.materials;
     const incoming=req.body&&req.body.catalog;
+    if(!incoming && Array.isArray(legacy)){
+      const byCode=new Map(catalog.materials.map(item=>[item.material_code,item]));
+      let count=0;
+      for(const row of legacy){
+        if(!row || typeof row.material_code!=='string' || typeof row.material_name!=='string') continue;
+        let target=byCode.get(row.material_code);
+        if(!target){target={material_code:row.material_code,material_name:row.material_name,material_unit:1,visible:true};catalog.materials.push(target);byCode.set(row.material_code,target);}
+        target.material_name=row.material_name;
+        if(Number.isSafeInteger(row.material_unit)&&row.material_unit>0) target.material_unit=row.material_unit;
+        if(typeof row.specification==='string') target.specification=row.specification;
+        count++;
+      }
+      ensure();return res.json({ok:true,count});
+    }
     if(!incoming || !Array.isArray(incoming.managers) || !Array.isArray(incoming.materials)){const e=new Error('영구 catalog 형식이 잘못됐습니다.');e.status=400;throw e;}
     for(const name of incoming.managers){if(typeof name==='string' && name.trim() && !catalog.managers.includes(name.trim())) catalog.managers.push(name.trim());}
     if(incoming.manager_settings && typeof incoming.manager_settings==='object'){
       for(const [name,value] of Object.entries(incoming.manager_settings)){
         if(!catalog.managers.includes(name) || !value || typeof value!=='object') continue;
-        catalog.manager_settings[name]={
-          visible:value.visible!==false,
-          ...(typeof value.image_data==='string'&&value.image_data?{image_data:value.image_data}:{})
-        };
+        catalog.manager_settings[name]={visible:value.visible!==false,...(typeof value.image_data==='string'&&value.image_data?{image_data:value.image_data}:{})};
       }
     }
     const byCode=new Map(catalog.materials.map(item=>[item.material_code,item]));
     for(const row of incoming.materials){
       if(!row || typeof row.material_code!=='string' || typeof row.material_name!=='string') continue;
       let target=byCode.get(row.material_code);
-      if(!target){target={material_code:row.material_code,material_name:row.material_name,material_unit:1};catalog.materials.push(target);byCode.set(row.material_code,target);}
+      if(!target){target={material_code:row.material_code,material_name:row.material_name,material_unit:1,visible:true};catalog.materials.push(target);byCode.set(row.material_code,target);}
       target.material_name=row.material_name;
       if(Number.isSafeInteger(row.material_unit)&&row.material_unit>0) target.material_unit=row.material_unit;
       if(typeof row.specification==='string') target.specification=row.specification;
       target.visible=row.visible!==false;
       if(typeof row.image_data==='string'&&row.image_data) target.image_data=row.image_data; else delete target.image_data;
     }
-    ensure();
-    res.json({ok:true,managers:catalog.managers.length,materials:catalog.materials.length});
+    ensure();res.json({ok:true,managers:catalog.managers.length,materials:catalog.materials.length});
   });
 }
 
