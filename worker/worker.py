@@ -63,7 +63,6 @@ def execute_item(api, adapter, journal, item):
         try: adapter.show_admin(refresh=False)
         except Exception: pass
     except MissingStockResult:
-        # 상품 조회 후 체크박스가 없으면 실제 출고 단계 전이므로 안전하게 버리고 다음 건으로 진행한다.
         note='HOMS 조회 결과 체크박스 없음 - 미불출 스킵: '+item['material_code']
         update('skip_missing_result',note)
         journal.record(item,'skipped_missing_result')
@@ -80,6 +79,23 @@ def execute_item(api, adapter, journal, item):
         except Exception: pass
         raise
 
+def recover_interrupted(api):
+    """Worker 재실행 시 서버에 남은 claimed/submitting 1건을 확인 필요로 넘긴다."""
+    state=api.get('preview')
+    blocked=state.get('blocked') or {}
+    if blocked.get('status') not in ('claimed','submitting'):
+        return 0
+    item=api.get('items/'+blocked['id'])
+    attempt=item.get('attempt_id')
+    if not attempt:
+        return 0
+    api.post('items/'+item['id']+'/review',{
+        'attempt_id':attempt,
+        'note':'Worker 재실행 감지 - 이전 처리 건 자동 확인 필요 전환'
+    })
+    print('이전 중단 건을 확인 필요로 전환:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
+    return 1
+
 def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
     previous=None
     last_keepalive=0.0
@@ -94,7 +110,7 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
         if state.get('worker_protocol')!=3:
             raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
         if state.get('blocked'):
-            mode='확인 필요/다른 처리기 작업 중'
+            mode='다른 처리기 작업 중'
         elif state.get('batch_active'):
             mode='일괄 불출 진행 중 / 남은 '+str(state.get('batch_remaining',0))+'건'
         else:
@@ -176,6 +192,7 @@ def main():
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'))
             admin_url=cfg['server_url'].rstrip('/') + '/admin'
             adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile')
+            recover_interrupted(api)
             print('일괄 불출 감시 시작. 종료: Ctrl+C',flush=True)
             print('사용 순서: HOMS 로그인 -> 요청별 승인 -> 관리자 화면에서 승인건 일괄 불출',flush=True)
             run_loop(api,adapter,journal,interval,once=args.once)
