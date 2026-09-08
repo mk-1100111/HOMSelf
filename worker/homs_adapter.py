@@ -3,7 +3,6 @@ import re
 import time
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 
 class MissingStockResult(RuntimeError):
@@ -105,38 +104,37 @@ class HomsAdapter:
             self.driver.refresh()
 
     def keep_alive(self):
-        """현재 브라우저 탭을 건드리지 않고 HOMS 로그인 쿠키로 백그라운드 GET을 보낸다."""
-        host = urlparse(self.p['stock_url']).hostname or 'homs.biz'
+        """현재 화면 탭을 바꾸지 않고 Chrome 브라우저 컨텍스트에서 HOMS 세션을 갱신한다."""
+        current_handle = self.driver.current_window_handle
+        if not self.homs_handle or self.homs_handle not in self.driver.window_handles:
+            return {'ok': False, 'status': 0, 'url': ''}
         try:
-            raw = self.driver.execute_cdp_cmd('Network.getAllCookies', {})
-            cookies = raw.get('cookies', [])
-        except Exception as error:
-            raise RuntimeError('Chrome HOMS 세션 쿠키를 읽지 못했습니다.') from error
-
-        pairs = []
-        for cookie in cookies:
-            domain = str(cookie.get('domain') or '').lstrip('.')
-            if host == domain or host.endswith('.' + domain):
-                name = cookie.get('name')
-                value = cookie.get('value')
-                if name and value is not None:
-                    pairs.append(f'{name}={value}')
-        if not pairs:
-            raise RuntimeError('HOMS 로그인 쿠키를 찾지 못했습니다.')
-
-        request = Request(
-            self.p['stock_url'],
-            method='GET',
-            headers={
-                'Cookie': '; '.join(pairs),
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'User-Agent': 'Mozilla/5.0 HOMSelf-Session-KeepAlive'
-            }
-        )
-        with urlopen(request, timeout=15) as response:
-            final_url = response.geturl()
-            return {'ok': 200 <= response.status < 400,'status': response.status,'url': final_url}
+            self.driver.switch_to.window(self.homs_handle)
+            result = self.driver.execute_async_script("""
+                const url = arguments[0];
+                const done = arguments[arguments.length - 1];
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 12000);
+                fetch(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    signal: controller.signal,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                }).then(response => {
+                    clearTimeout(timer);
+                    done({ok: response.ok, status: response.status, url: response.url || url});
+                }).catch(error => {
+                    clearTimeout(timer);
+                    done({ok: false, status: 0, url: url, error: String(error)});
+                });
+            """, self.p['stock_url'])
+            if not result or not result.get('ok'):
+                raise RuntimeError('Chrome HOMS 세션 유지 실패: ' + str((result or {}).get('error') or (result or {}).get('status') or 'unknown'))
+            return result
+        finally:
+            if current_handle in self.driver.window_handles:
+                self.driver.switch_to.window(current_handle)
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
@@ -164,47 +162,65 @@ class HomsAdapter:
 
     def _select_visible(self, xpath, wanted):
         from selenium.webdriver.support.ui import Select
-        element = self.unique(xpath, True)
-        select = Select(element)
-        try:
-            select.select_by_visible_text(wanted)
-        except Exception:
-            option = next((o for o in select.options if wanted in (o.text or '').strip()), None)
-            if not option:
-                raise RuntimeError('선택값을 찾지 못했습니다: ' + wanted)
-            select.select_by_value(option.get_attribute('value'))
-        selected = (select.first_selected_option.text or '').strip()
-        if wanted not in selected:
-            raise RuntimeError('선택값 적용 실패: ' + wanted + ' / 현재값: ' + selected)
-
-    def _select_page_size_90(self):
-        """HOMS 표시건수를 option[3](90개씩보기)로 선택하고 실제 선택 상태까지 검증한다."""
-        from selenium.webdriver.support.ui import Select
         from selenium.common.exceptions import StaleElementReferenceException
-        select_xpath='//*[@id="frm"]/div[2]/div[2]/select'
-        option_xpath='//*[@id="frm"]/div[2]/div[2]/select/option[3]'
         last=''
         for attempt in range(8):
             try:
-                option=self.unique(option_xpath,True)
-                value=option.get_attribute('value')
-                text=(option.text or '').strip()
-                if '90' not in text:
-                    raise RuntimeError('option[3]이 90개씩보기가 아닙니다: '+text)
-                select=Select(self.unique(select_xpath,True))
-                if value:
-                    select.select_by_value(value)
-                else:
-                    select.select_by_index(2)
-                time.sleep(0.35)
-                current=Select(self.unique(select_xpath,True))
-                last=(current.first_selected_option.text or '').strip()
-                if '90' in last:
-                    print('재고조회 표시건수 확인:',last,flush=True)
+                element = self.unique(xpath, True)
+                select = Select(element)
+                try:
+                    select.select_by_visible_text(wanted)
+                except Exception:
+                    option = next((o for o in select.options if wanted in (o.text or '').strip()), None)
+                    if not option:
+                        raise RuntimeError('선택값을 찾지 못했습니다: ' + wanted)
+                    select.select_by_value(option.get_attribute('value'))
+                time.sleep(0.2)
+                current = Select(self.unique(xpath, True))
+                last = (current.first_selected_option.text or '').strip()
+                if wanted in last:
                     return
             except StaleElementReferenceException:
                 pass
             if attempt < 7:
+                time.sleep(0.35)
+        raise RuntimeError('선택값 적용 실패: ' + wanted + ' / 현재값: ' + (last or '확인 불가'))
+
+    def _select_page_size_90(self):
+        """조회 결과가 생성된 뒤 option[3](90개씩보기)을 선택한다."""
+        script = """
+            const xp = arguments[0];
+            const node = document.evaluate(xp, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (!node) return {ok:false,error:'select not found'};
+            const options = Array.from(node.options || []);
+            if (options.length < 3) return {ok:false,error:'option[3] not found'};
+            const option = options[2];
+            const text = (option.textContent || '').trim();
+            if (!text.includes('90')) return {ok:false,error:'option[3] text='+text};
+            node.selectedIndex = 2;
+            option.selected = true;
+            node.dispatchEvent(new Event('input',{bubbles:true}));
+            node.dispatchEvent(new Event('change',{bubbles:true}));
+            return {ok:true,text:text,value:node.value};
+        """
+        select_xpath='//*[@id="frm"]/div[2]/div[2]/select'
+        last=''
+        for attempt in range(10):
+            result=self.driver.execute_script(script,select_xpath) or {}
+            if result.get('ok'):
+                time.sleep(0.5)
+                current=self.driver.execute_script("""
+                    const xp=arguments[0];
+                    const node=document.evaluate(xp,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;
+                    return node && node.options && node.selectedIndex >= 0 ? (node.options[node.selectedIndex].textContent||'').trim() : '';
+                """,select_xpath)
+                last=str(current or '').strip()
+                if '90' in last:
+                    print('재고조회 표시건수 확인:',last,flush=True)
+                    return
+            else:
+                last=str(result.get('error') or '')
+            if attempt < 9:
                 time.sleep(0.5)
         raise RuntimeError('90개씩보기 적용 실패 / 현재값: '+(last or '확인 불가'))
 
@@ -238,29 +254,47 @@ class HomsAdapter:
     def sync_inventory(self):
         """HOMS 전체 재고를 읽어 서버 동기화용 목록으로 반환한다."""
         from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support.ui import Select
         self.show_homs()
         self.driver.get(self.p['stock_url'])
         self.unique(self.p['stock_search_css'])
 
-        self._select_visible('//*[@id="srcDisplayYn"]','전체')
-        time.sleep(0.8)
-        self._select_page_size_90()
-        page_size=(Select(self.unique('//*[@id="frm"]/div[2]/div[2]/select',True)).first_selected_option.text or '').strip()
-        if '90' not in page_size:
-            raise RuntimeError('조회 직전 표시건수가 90개가 아닙니다: '+page_size)
-
-        self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
-        self.unique('//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]',True)
-
         rows_xpath='//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr'
+        header_xpath='//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]'
+
+        # HOMS는 조회 시 결과 영역과 표시건수 select를 다시 그리므로 먼저 조회한 뒤 90개 보기를 적용한다.
+        self._select_visible('//*[@id="srcDisplayYn"]','전체')
+        time.sleep(0.5)
+        self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
+        self.unique(header_xpath,True)
         WebDriverWait(self.driver,20).until(
             lambda _: self.driver.execute_script(
                 "return document.evaluate(arguments[0],document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null).snapshotLength;",
                 rows_xpath
             ) > 0
         )
-        time.sleep(0.5)
+        initial_count=self.driver.execute_script(
+            "return document.evaluate(arguments[0],document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null).snapshotLength;",
+            rows_xpath
+        )
+        print('재고조회 1차 결과:',initial_count,'건 / 90개 보기 적용',flush=True)
+
+        self._select_page_size_90()
+        # change 이벤트로 목록이 다시 그려질 수 있으므로 결과가 안정될 때까지 대기한다.
+        stable={'count':-1,'same':0}
+        def rows_stable(_):
+            count=self.driver.execute_script(
+                "return document.evaluate(arguments[0],document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null).snapshotLength;",
+                rows_xpath
+            )
+            if count > 0 and count == stable['count']:
+                stable['same'] += 1
+            else:
+                stable['count'] = count
+                stable['same'] = 0
+            return count > 0 and stable['same'] >= 2
+        WebDriverWait(self.driver,20,poll_frequency=0.4).until(rows_stable)
+        time.sleep(0.4)
+        print('재고조회 최종 결과:',stable['count'],'건',flush=True)
 
         raw_rows=self.driver.execute_script("""
             const xp=arguments[0];
