@@ -7,25 +7,20 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
     <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
-
     <link rel="stylesheet" href="/public/material_list.css">
 </head>
 <body>
     <nav class="navbar navbar-dark bg-dark fixed-top">
         <div class="container-fluid">
-
             <a class="navbar-brand" href="/main" id="backbtn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-backspace" viewBox="0 0 16 16">
                     <path d="M5.83 5.146a.5.5 0 0 0 0 .708L7.975 8l-2.147 2.146a.5.5 0 0 0 .707.708l2.147-2.147 2.146 2.147a.5.5 0 0 0 .707-.708L9.39 8l2.146-2.146a.5.5 0 0 0-.707-.708L8.683 7.293 6.536 5.146a.5.5 0 0 0-.707 0z"/>
                     <path d="M13.683 1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-7.08a2 2 0 0 1-1.519-.698L.241 8.65a1 1 0 0 1 0-1.302L5.084 1.7A2 2 0 0 1 6.603 1zm-7.08 1a1 1 0 0 0-.76.35L1 8l4.844 5.65a1 1 0 0 0 .759.35h7.08a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1z"/>
-                  </svg>
+                </svg>
             </a>
             <ul class="nav justify-content-center">
-                <li class="nav-item">
-                    <a class="navbar-brand" aria-current="page" id="welcome-ms"> </a>
-                </li>
+                <li class="nav-item"><a class="navbar-brand" aria-current="page" id="welcome-ms"> </a></li>
             </ul>
             <button class="btn btn-dark position-relative" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasBottom" aria-controls="offcanvasBottom">
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-bag" viewBox="0 0 16 16">
@@ -46,18 +41,13 @@
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body small">
-            <div class="cart-container" id="cart-container">
-                <div id="cart-items" class="cart-items"></div>
-            </div>
+            <div class="cart-container" id="cart-container"><div id="cart-items" class="cart-items"></div></div>
             <div class="confirmation-button-container">
-                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#staticBackdrop">
-                    확인
-                </button>
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#staticBackdrop">확인</button>
             </div>
         </div>
-
-
     </div>
+
     <div class="modal fade" id="staticBackdrop" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
@@ -65,9 +55,7 @@
                     <h1 class="modal-title fs-1" id="staticBackdropLabel"></h1>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div id="modal-cart-list"></div>
-                </div>
+                <div class="modal-body"><div id="modal-cart-list"></div></div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">NO</button>
                     <button type="button" class="btn btn-primary" id="send-request" onclick="sendCart()">불출 요청</button>
@@ -76,22 +64,14 @@
         </div>
     </div>
 
-
-
-
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
-
-
-
     <script>
         let countdownInterval;
         let timeoutId;
 
         function startCountdown() {
             let count = 4;
-
             let countdownElement = document.createElement("div");
             countdownElement.id = "countdown";
             countdownElement.style.position = "fixed";
@@ -104,14 +84,12 @@
             countdownElement.style.borderRadius = "5px";
             countdownElement.style.zIndex = "9999";
             document.body.appendChild(countdownElement);
-
             countdownInterval = setInterval(function() {
                 count--;
                 countdownElement.innerText = count + "초 후 메인으로 돌아갑니다";
                 if (count <= 0) {
                     clearInterval(countdownInterval);
                     redirectToMain();
-
                     countdownElement.parentNode.removeChild(countdownElement);
                 }
             }, 1000);
@@ -120,24 +98,14 @@
         function startInactivityTimer() {
             if (!localStorage.getItem("homself.pending.v1") && !window.homselfSending) timeoutId = setTimeout(startCountdown, 10000);
         }
-
         function resetInactivityTimer() {
             clearTimeout(timeoutId);
             startInactivityTimer();
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-            }
-
+            if (countdownInterval) clearInterval(countdownInterval);
             let countdownElement = document.getElementById("countdown");
-            if (countdownElement) {
-                countdownElement.parentNode.removeChild(countdownElement);
-            }
+            if (countdownElement) countdownElement.parentNode.removeChild(countdownElement);
         }
-
-        document.addEventListener("DOMContentLoaded", function() {
-            startInactivityTimer();
-        });
-
+        document.addEventListener("DOMContentLoaded", startInactivityTimer);
         document.addEventListener("mousemove", resetInactivityTimer);
         document.addEventListener("keydown", resetInactivityTimer);
         document.addEventListener("click", resetInactivityTimer);
@@ -145,28 +113,9 @@
         document.addEventListener("touchstart", resetInactivityTimer);
         document.addEventListener("touchend", resetInactivityTimer);
         document.addEventListener("touchmove", resetInactivityTimer);
-
-        function redirectToMain() {
-
-            window.location.href = "/main";
-        }
+        function redirectToMain() { window.location.href = "/main"; }
 
         $(document).ready(function() {
-            function getManagerNameFromURL() {
-                let currentURL = window.location.href;
-                let queryString = currentURL.split('?')[1];
-                if (queryString) {
-                    let parameters = queryString.split('&');
-                    for (let parameter of parameters) {
-                        let [name, value] = parameter.split('=');
-                        if (name === 'managerName') {
-                            return decodeURIComponent(value);
-                        }
-                    }
-                }
-                return '';
-            }
-
             let managerName = getManagerNameFromURL();
             $("#welcome-ms").text(`${managerName} 매니저님, 환영합니다!`);
             $("#staticBackdropLabel").text(`${managerName} 매니저님 불출내역`);
@@ -174,180 +123,104 @@
 
         let material_list = <%- JSON.stringify(materials) %>;
 
+        function renderMaterialCard(material) {
+            if (Number.isFinite(material.available_stock) && material.available_stock <= 0) return;
+            const col=document.createElement('div');
+            col.className='col';
+            const card=document.createElement('div');
+            card.className='card h-100 material-card';
+            card.onclick=()=>addToCart(material.material_name);
+
+            const imageWrap=document.createElement('div');
+            imageWrap.className='material-image-wrap';
+            if(Number.isFinite(material.available_stock)){
+                const badge=document.createElement('span');
+                badge.className='material-stock-badge';
+                badge.textContent=material.available_stock.toLocaleString('ko-KR');
+                imageWrap.appendChild(badge);
+            }
+
+            const placeholder=document.createElement('div');
+            placeholder.className='material-image-placeholder';
+            placeholder.textContent='이미지 준비중';
+            const img=document.createElement('img');
+            img.className='card-img-top material-image';
+            img.alt=material.material_name;
+            img.onload=()=>{placeholder.hidden=true;img.hidden=false;};
+            img.onerror=()=>{img.hidden=true;placeholder.hidden=false;};
+            img.src='/public/static/img/material_list/'+encodeURIComponent(material.material_name)+'.jpg';
+            imageWrap.append(img,placeholder);
+
+            const body=document.createElement('div');
+            body.className='card-body text-center';
+            const title=document.createElement('h4');
+            title.className='card-title text-center';
+            title.textContent=material.material_name;
+            body.appendChild(title);
+            card.append(imageWrap,body);col.appendChild(card);
+            document.getElementById('material-lists').appendChild(col);
+        }
+
         $(document).ready(async function(){
             const catalog = await window.getHomselfCatalog();
             if (!catalog) return;
             material_list = catalog.materials;
-
-
-            for(let i=0; i<material_list.length; i++){
-                let card = `
-                <div class="col">
-                    <div class="card h-100" onclick="addToCart('${material_list[i].material_name}')">
-                        <img src="public/static/img/material_list/${material_list[i].material_name}.jpg" class="card-img-top" style="height: 100%;">
-                        <div class="card-body text-center">
-                            <h4 class="card-title text-center">${material_list[i].material_name}</h4>
-                        </div>
-                    </div>
-                </div>
-                `
-                $("#material-lists").append(card);
-            }
+            document.getElementById('material-lists').replaceChildren();
+            material_list.forEach(renderMaterialCard);
         });
 
         var minusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-dash-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/> </svg>';
-
         var plusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/> </svg>';
-
         var cartQuantities = {};
 
         function addToCart(name) {
-
-            if (cartQuantities[name]) {
-                cartQuantities[name]++;
-            } else {
-                cartQuantities[name] = 1;
-            }
-
+            if (cartQuantities[name]) cartQuantities[name]++;
+            else cartQuantities[name] = 1;
             updateCart();
         }
-
-        function removeFromCart(name) {
-            delete cartQuantities[name];
-            updateCart();
-        }
-
+        function removeFromCart(name) { delete cartQuantities[name]; updateCart(); }
         function updateCart() {
             var cartItemsElement = document.getElementById("cart-items");
             cartItemsElement.innerHTML = "";
             cartItemsElement.style.display = "block";
-
             var modalCartListElement = document.getElementById("modal-cart-list");
             modalCartListElement.innerHTML = "";
-
             Object.keys(cartQuantities).forEach(function (name, index, array) {
-                var cartItemDiv = document.createElement("div");
-                cartItemDiv.classList.add("cart-item");
-
-                var buttonContainer = document.createElement("div");
-                buttonContainer.classList.add("button-container");
-
-                var delButton = document.createElement("button");
-                delButton.innerText = "삭제";
-                delButton.classList.add("btn", "btn-danger");
-                delButton.style.cursor = "pointer";
-                delButton.style.fontSize = "40%";
-                delButton.onclick = function () {
-                    delete cartQuantities[name];
-                    removeFromCart(name);
-                    updateCart();
-                };
-
-                var plusButton = document.createElement("div");
-                plusButton.innerHTML = plusIcon;
-                plusButton.classList.add("cart-button");
-                plusButton.style.cursor = "pointer";
-                plusButton.onclick = function () {
-                    cartQuantities[name]++;
-                    updateCart();
-                };
-
-                var minusButton = document.createElement("div");
-                minusButton.innerHTML = minusIcon;
-                minusButton.classList.add("cart-button");
-                minusButton.style.cursor = "pointer";
-                minusButton.onclick = function () {
-                    cartQuantities[name] = Math.max(0, cartQuantities[name] - 1);
-                    if (cartQuantities[name] === 0) {
-                        removeFromCart(name);
-                    }
-                    updateCart();
-                };
-
+                var cartItemDiv = document.createElement("div");cartItemDiv.classList.add("cart-item");
+                var buttonContainer = document.createElement("div");buttonContainer.classList.add("button-container");
+                var delButton = document.createElement("button");delButton.innerText = "삭제";delButton.classList.add("btn", "btn-danger");delButton.style.cursor = "pointer";delButton.style.fontSize = "40%";
+                delButton.onclick = function () {delete cartQuantities[name];removeFromCart(name);updateCart();};
+                var plusButton = document.createElement("div");plusButton.innerHTML = plusIcon;plusButton.classList.add("cart-button");plusButton.style.cursor = "pointer";plusButton.onclick = function () {cartQuantities[name]++;updateCart();};
+                var minusButton = document.createElement("div");minusButton.innerHTML = minusIcon;minusButton.classList.add("cart-button");minusButton.style.cursor = "pointer";
+                minusButton.onclick = function () {cartQuantities[name] = Math.max(0, cartQuantities[name] - 1);if (cartQuantities[name] === 0) removeFromCart(name);updateCart();};
                 var textElement = document.createElement("span");
                 textElement.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;
                 textElement.classList.add("cart-text");
-
-                cartItemDiv.appendChild(delButton);
-                cartItemDiv.appendChild(textElement);
-                buttonContainer.appendChild(plusButton);
-                buttonContainer.appendChild(minusButton);
-                cartItemDiv.appendChild(buttonContainer);
-                cartItemsElement.appendChild(cartItemDiv);
-
-                var modalCartItem = document.createElement("div");
-                modalCartItem.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;
-                modalCartListElement.appendChild(modalCartItem);
-
-
-                if (index === array.length - 1) {
-                    cartItemDiv.scrollIntoView({ behavior: 'smooth' });
-
-                }
+                cartItemDiv.appendChild(delButton);cartItemDiv.appendChild(textElement);buttonContainer.appendChild(plusButton);buttonContainer.appendChild(minusButton);cartItemDiv.appendChild(buttonContainer);cartItemsElement.appendChild(cartItemDiv);
+                var modalCartItem = document.createElement("div");modalCartItem.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;modalCartListElement.appendChild(modalCartItem);
+                if (index === array.length - 1) cartItemDiv.scrollIntoView({ behavior: 'smooth' });
             });
-
-            var offcanvasBottom = bootstrap.Offcanvas.getOrCreateInstance(document.getElementById("offcanvasBottom"));
-            offcanvasBottom.show();
-
-            var sendButton = document.getElementById("sendbtn");
-
+            bootstrap.Offcanvas.getOrCreateInstance(document.getElementById("offcanvasBottom")).show();
             updateBadge();
         }
-
-
         function updateBadge() {
             var totalItems = Object.values(cartQuantities).reduce((acc, val) => acc + val, 0);
             var badgeElement = document.getElementById("cart-badge");
             badgeElement.innerText = totalItems > 0 ? (totalItems > 99 ? "99+" : totalItems.toString()) : "";
             badgeElement.style.display = totalItems > 0 ? "inline" : "none";
         }
-
         function getManagerNameFromURL() {
-            let currentURL = window.location.href;
-            let queryString = currentURL.split('?')[1];
-            if (queryString) {
-                let parameters = queryString.split('&');
-                for (let parameter of parameters) {
-                    let [name, value] = parameter.split('=');
-                    if (name === 'managerName') {
-                        return decodeURIComponent(value);
-                    }
-                }
-            }
+            let currentURL = window.location.href;let queryString = currentURL.split('?')[1];
+            if (queryString) {for (let parameter of queryString.split('&')) {let [name, value] = parameter.split('=');if (name === 'managerName') return decodeURIComponent(value);}}
             return '';
         }
 
-        let touchStartTime;
-        let isDragging = false;
-
-        document.addEventListener('contextmenu', function(event) {
-            event.preventDefault();
-        });
-
-        document.addEventListener('touchstart', function(event) {
-            touchStartTime = new Date().getTime();
-            isDragging = false;
-        });
-
-        document.addEventListener('touchmove', function(event) {
-            isDragging = true;
-        });
-
-        document.addEventListener('touchend', function(event) {
-            let touchEndTime = new Date().getTime();
-            let touchDuration = touchEndTime - touchStartTime;
-
-            if (!isDragging && touchDuration > 300) {
-
-                event.preventDefault();
-                event.target.click();
-            }
-        });
-
-
+        let touchStartTime;let isDragging = false;
+        document.addEventListener('contextmenu', function(event) {event.preventDefault();});
+        document.addEventListener('touchstart', function() {touchStartTime = new Date().getTime();isDragging = false;});
+        document.addEventListener('touchmove', function() {isDragging = true;});
+        document.addEventListener('touchend', function(event) {let touchDuration = new Date().getTime() - touchStartTime;if (!isDragging && touchDuration > 300) {event.preventDefault();event.target.click();}});
     </script>
-
-
-<script src="/public/request-client.js"></script>
+    <script src="/public/request-client.js"></script>
 </body>
 </html>
