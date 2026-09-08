@@ -1,7 +1,7 @@
-"""Persist static material metadata to the authorized private HOMSelf-data repository.
+"""Persist HOMSelf static catalog metadata to the authorized private HOMSelf-data repository.
 
-Stock quantities are intentionally excluded. The private catalog is the long-lived
-source for material code/name/unit metadata; runtime HOMS stock stays on the server.
+Stock quantities are intentionally excluded. Manager/material visibility, images and
+material units are long-lived catalog data; runtime HOMS stock stays on the server.
 """
 import base64
 import json
@@ -44,6 +44,13 @@ def load_catalog(cfg):
         raise RuntimeError('HOMSelf-data catalog.json 형식이 잘못됐습니다.') from error
     if not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):
         raise RuntimeError('HOMSelf-data catalog.json 구조가 잘못됐습니다.')
+    if not isinstance(catalog.get('manager_settings'),dict):
+        catalog['manager_settings']={}
+    for name in catalog['managers']:
+        catalog['manager_settings'].setdefault(name,{'visible':True})
+    for item in catalog['materials']:
+        if isinstance(item,dict) and 'visible' not in item:
+            item['visible']=True
     return catalog,result.get('sha'),repository,branch,token
 
 
@@ -55,31 +62,19 @@ def merge_inventory(catalog,inventory_rows):
         code=str(row.get('material_code','')).strip()
         if not code or code in known:
             continue
-        item={
-            'material_code':code,
-            'material_name':str(row.get('material_name') or code).strip(),
-            'material_unit':1
-        }
+        item={'material_code':code,'material_name':str(row.get('material_name') or code).strip(),'material_unit':1,'visible':True}
         specification=str(row.get('specification') or '').strip()
-        if specification:
-            item['specification']=specification
-        materials.append(item)
-        known.add(code)
-        added.append(item)
+        if specification:item['specification']=specification
+        materials.append(item);known.add(code);added.append(item)
     return added
 
 
-def save_catalog(cfg,catalog,sha,repository=None,branch=None,token=None):
+def save_catalog(cfg,catalog,sha,repository=None,branch=None,token=None,message='Update HOMSelf catalog'):
     if repository is None or branch is None or token is None:
         repository,branch,token=_settings(cfg)
     base=_repo_base(repository)
-    body={
-        'message':'Update HOMSelf material catalog from HOMS sync',
-        'branch':branch,
-        'content':base64.b64encode((json.dumps(catalog,ensure_ascii=False,indent=2)+'\n').encode('utf-8')).decode('ascii')
-    }
-    if sha:
-        body['sha']=sha
+    body={'message':message,'branch':branch,'content':base64.b64encode((json.dumps(catalog,ensure_ascii=False,indent=2)+'\n').encode('utf-8')).decode('ascii')}
+    if sha:body['sha']=sha
     return http(base+'/contents/'+quote(CATALOG_PATH),token,'PUT',body)
 
 
@@ -87,7 +82,7 @@ def persist_inventory_catalog(cfg,inventory_rows):
     catalog,sha,repository,branch,token=load_catalog(cfg)
     added=merge_inventory(catalog,inventory_rows)
     if added:
-        result=save_catalog(cfg,catalog,sha,repository,branch,token)
+        result=save_catalog(cfg,catalog,sha,repository,branch,token,'Add HOMSelf materials from HOMS sync')
         commit=result.get('commit',{}).get('sha','')
         print('신규 부자재 GitHub 영구 저장:',len(added),'건',commit,flush=True)
     else:
@@ -95,22 +90,20 @@ def persist_inventory_catalog(cfg,inventory_rows):
     return catalog,added
 
 
+def persist_admin_catalog(cfg,catalog):
+    if not isinstance(catalog,dict) or not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):
+        raise RuntimeError('관리자 catalog 저장 데이터가 잘못됐습니다.')
+    _,sha,repository,branch,token=load_catalog(cfg)
+    result=save_catalog(cfg,catalog,sha,repository,branch,token,'Update HOMSelf admin catalog settings')
+    return result.get('commit',{}).get('sha','')
+
+
 def push_catalog_to_server(api,catalog):
-    materials=[]
-    for item in catalog.get('materials',[]):
-        if not isinstance(item,dict):
-            continue
-        materials.append({
-            'material_code':str(item.get('material_code','')).strip(),
-            'material_name':str(item.get('material_name','')).strip(),
-            'material_unit':item.get('material_unit',1),
-            'specification':str(item.get('specification','')).strip()
-        })
-    return api.post('catalog-sync',{'materials':materials})
+    return api.post('catalog-sync',{'catalog':catalog})
 
 
 def restore_persistent_catalog(api,cfg):
     catalog,_,_,_,_=load_catalog(cfg)
     result=push_catalog_to_server(api,catalog)
-    print('GitHub 영구 부자재 catalog 서버 반영:',result.get('count',len(catalog.get('materials',[]))),'건',flush=True)
+    print('GitHub 영구 부자재 catalog 서버 반영:',result.get('materials',result.get('count',len(catalog.get('materials',[])))),'건',flush=True)
     return catalog
