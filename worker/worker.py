@@ -100,7 +100,11 @@ def execute_inventory_sync(api, adapter, sync_state, cfg):
         except Exception:pass
 
 def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
-    previous=None;last_keepalive=0.0
+    previous=None
+    last_keepalive=0.0
+    last_server_boot_id=None
+    pending_server_restore=False
+    last_restore_attempt=0.0
     while not stop():
         try:
             api.post('heartbeat',{'mode':'live'});state=api.get('preview')
@@ -109,6 +113,17 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
             if once:raise
             sleep(min(30,poll_seconds*2));continue
         if state.get('worker_protocol')!=3:raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
+
+        server_boot_id=state.get('server_boot_id')
+        if server_boot_id:
+            if last_server_boot_id is None:
+                last_server_boot_id=server_boot_id
+            elif server_boot_id!=last_server_boot_id:
+                last_server_boot_id=server_boot_id
+                pending_server_restore=True
+                last_restore_attempt=0.0
+                print('Render 서버 재시작 감지: GitHub 영구 catalog 자동 복원 대기',flush=True)
+
         sync_state=state.get('inventory_sync') or {}
         if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):mode='재고 동기화 요청 처리 중'
         elif state.get('blocked'):mode='다른 처리기 작업 중'
@@ -116,7 +131,19 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
         else:mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:print(mode,flush=True);previous=mode
 
-        if not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested':
+        now=time.monotonic()
+        idle=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
+        if pending_server_restore and idle and now-last_restore_attempt>=60:
+            last_restore_attempt=now
+            if restore_catalog(api,cfg):
+                pending_server_restore=False
+                print('Render 재시작 후 GitHub 영구 catalog 자동 복원 완료',flush=True)
+                previous=None
+                if once:return
+                sleep(poll_seconds);continue
+            print('GitHub catalog 자동 복원 재시도는 60초 후 진행합니다.',flush=True)
+
+        if idle:
             try:
                 if execute_catalog_persist(api,cfg):
                     previous=None
