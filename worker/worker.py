@@ -199,7 +199,7 @@ def main():
         try:
             if args.reconcile:reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
-            profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
+            profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin/releases';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
             print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
