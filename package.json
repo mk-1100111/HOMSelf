@@ -4,10 +4,10 @@
   "description": "HNS시흥지점 HOMS 자동화시스템",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "supervisor app.js",
+    "start": "node bootstrap.js",
+    "dev": "supervisor bootstrap.js",
     "test": "node --test tests/*.test.js",
-    "start:local": "node --env-file=.env app.js"
+    "start:local": "node --env-file=.env bootstrap.js"
   },
   "author": "1100111 김무경",
   "license": "ISC",
