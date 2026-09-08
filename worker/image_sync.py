@@ -4,31 +4,10 @@ import time
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
-from catalog_persistence import load_catalog, save_catalog, save_material_image, push_catalog_to_server
+from catalog_persistence import load_catalog, save_catalog, save_material_image
 
 SEARCH_XPATH='//*[@id="_searchBar"]'
 IMAGE_XPATH='//*[@id="spl_thum_0_0"]/img'
-
-
-def _capture_material_image(adapter, material_code):
-    adapter.show_homs()
-    search=adapter.unique(SEARCH_XPATH, xpath=True)
-    search.clear()
-    search.send_keys(str(material_code))
-    search.send_keys(Keys.ENTER)
-
-    wait=WebDriverWait(adapter.driver,15,poll_frequency=0.35)
-    try:
-        image=wait.until(lambda _: _ready_image(adapter))
-    except TimeoutException:
-        return None,''
-
-    src=(image.get_attribute('src') or '').strip()
-    if not src:return None,''
-    time.sleep(0.25)
-    png=image.screenshot_as_png
-    if not png:return None,src
-    return png,src
 
 
 def _ready_image(adapter):
@@ -47,6 +26,20 @@ def _ready_image(adapter):
     return image
 
 
+def _capture_material_image(adapter,material_code):
+    adapter.show_homs()
+    search=adapter.unique(SEARCH_XPATH,xpath=True)
+    search.clear();search.send_keys(str(material_code));search.send_keys(Keys.ENTER)
+    wait=WebDriverWait(adapter.driver,15,poll_frequency=0.35)
+    try:image=wait.until(lambda _: _ready_image(adapter))
+    except TimeoutException:return None,''
+    src=(image.get_attribute('src') or '').strip()
+    if not src:return None,''
+    time.sleep(0.25)
+    png=image.screenshot_as_png
+    return (png,src) if png else (None,src)
+
+
 def execute_image_sync(api,adapter,cfg,state):
     request_id=str(state.get('request_id') or '')
     if not request_id:raise RuntimeError('이미지 동기화 요청번호가 없습니다.')
@@ -55,20 +48,7 @@ def execute_image_sync(api,adapter,cfg,state):
     server_targets={str(item.get('material_code')) for item in (state.get('materials') or []) if isinstance(item,dict)}
     targets=[item for item in catalog.get('materials',[]) if isinstance(item,dict) and str(item.get('material_code')) in server_targets and not item.get('image_data') and not item.get('image_path')]
     print('이미지 동기화 시작:',len(targets),'건',flush=True)
-
-    updated=0
-    skipped=0
-    hydrated={
-        'managers':catalog.get('managers',[]),
-        'manager_settings':catalog.get('manager_settings',{}),
-        'materials':[]
-    }
-    hydrated_by_code={}
-    for item in catalog.get('materials',[]):
-        clone=dict(item)
-        hydrated['materials'].append(clone)
-        hydrated_by_code[str(clone.get('material_code'))]=clone
-
+    updated=0;skipped=0
     try:
         for index,item in enumerate(targets,1):
             code=str(item.get('material_code','')).strip()
@@ -76,26 +56,19 @@ def execute_image_sync(api,adapter,cfg,state):
             try:
                 png,src=_capture_material_image(adapter,code)
                 if not png:
-                    skipped+=1
-                    print('이미지 없음 - 건너뜀:',code,flush=True)
-                    continue
+                    skipped+=1;print('이미지 없음 - 건너뜀:',code,flush=True);continue
                 path,commit=save_material_image(cfg,code,png,'png')
                 item['image_path']=path
                 data='data:image/png;base64,'+base64.b64encode(png).decode('ascii')
-                hydrated_by_code[code]['image_path']=path
-                hydrated_by_code[code]['image_data']=data
+                api.post('catalog-image-apply',{'material_code':code,'image_path':path,'image_data':data})
                 updated+=1
-                print('이미지 GitHub 저장:',code,path,commit,flush=True)
+                print('이미지 GitHub/서버 반영:',code,path,commit,flush=True)
             except Exception as error:
-                skipped+=1
-                print('이미지 처리 건너뜀:',code,type(error).__name__,str(error),flush=True)
+                skipped+=1;print('이미지 처리 건너뜀:',code,type(error).__name__,str(error),flush=True)
             time.sleep(0.35)
-
         if updated:
             result=save_catalog(cfg,catalog,sha,repository,branch,token,'Update HOMSelf material image paths')
             print('이미지 catalog GitHub 저장 완료:',result.get('commit',{}).get('sha',''),flush=True)
-            push_catalog_to_server(api,hydrated)
-            print('이미지 catalog 서버 반영 완료:',updated,'건',flush=True)
         api.post('material-image-sync/complete',{'request_id':request_id,'updated':updated,'skipped':skipped})
         print('이미지 동기화 완료:',updated,'건 / 건너뜀',skipped,'건',flush=True)
         return {'updated':updated,'skipped':skipped}
