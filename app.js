@@ -26,6 +26,107 @@ function createApp(config = process.env) {
   const catalog=loadCatalog(config.CATALOG_PATH);
   if(config.NODE_ENV === 'production') check(catalog.demo !== true,'샘플 기준정보로 운영할 수 없습니다. 비공개 저장소의 실제 기준정보를 설정하세요.');
   const store = new Store(config.DB_PATH,catalog);
+
+  store.db.exec(`
+    CREATE TABLE IF NOT EXISTS material_stock (
+      material_code TEXT PRIMARY KEY,
+      material_name TEXT NOT NULL,
+      specification TEXT NOT NULL DEFAULT '',
+      stock_quantity INTEGER NOT NULL CHECK(stock_quantity >= 0),
+      synced_at INTEGER NOT NULL
+    ) STRICT;
+  `);
+
+  const mergeSyncedMaterials=() => {
+    const known=new Set(catalog.materials.map(m=>m.material_code));
+    for(const row of store.db.prepare('SELECT material_code,material_name FROM material_stock ORDER BY material_code').all()) {
+      if(known.has(row.material_code)) continue;
+      catalog.materials.push({material_code:row.material_code,material_name:row.material_name,material_unit:1});
+      known.add(row.material_code);
+    }
+  };
+  mergeSyncedMaterials();
+
+  const inventoryState=() => ({
+    status:store.setting('inventory_sync_status') || 'idle',
+    request_id:store.setting('inventory_sync_request_id') || '',
+    requested_at:Number(store.setting('inventory_sync_requested_at') || 0),
+    completed_at:Number(store.setting('inventory_sync_completed_at') || 0),
+    count:Number(store.setting('inventory_sync_count') || 0),
+    error:store.setting('inventory_sync_error') || ''
+  });
+
+  const requestInventorySync=() => store.tx(() => {
+    check(store.paused() && !store.batchActive(),'일괄 불출 중에는 재고 동기화를 시작할 수 없습니다.');
+    check(!store.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting') LIMIT 1").get(),'처리 중인 항목이 있어 재고 동기화를 시작할 수 없습니다.');
+    const state=inventoryState();
+    check(state.status!=='requested','이미 재고 동기화를 요청했습니다.');
+    const requestId=crypto.randomUUID();
+    store.setSetting('inventory_sync_status','requested');
+    store.setSetting('inventory_sync_request_id',requestId);
+    store.setSetting('inventory_sync_requested_at',Date.now());
+    store.setSetting('inventory_sync_error','');
+    return inventoryState();
+  });
+
+  const failInventorySync=(requestId,errorText) => store.tx(() => {
+    const state=inventoryState();
+    check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');
+    store.setSetting('inventory_sync_status','failed');
+    store.setSetting('inventory_sync_error',String(errorText || '회사 PC 동기화 실패').slice(0,300));
+    return inventoryState();
+  });
+
+  const applyInventorySync=(requestId,rows) => store.tx(() => {
+    const state=inventoryState();
+    check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');
+    check(Array.isArray(rows) && rows.length>0 && rows.length<=500,'재고 동기화 데이터가 잘못됐습니다.',400);
+    const now=Date.now();
+    const seen=new Set();
+    const upsert=store.db.prepare(`INSERT INTO material_stock(material_code,material_name,specification,stock_quantity,synced_at)
+      VALUES(?,?,?,?,?) ON CONFLICT(material_code) DO UPDATE SET material_name=excluded.material_name,specification=excluded.specification,stock_quantity=excluded.stock_quantity,synced_at=excluded.synced_at`);
+    for(const row of rows) {
+      check(row && typeof row.material_code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(row.material_code),'상품코드가 잘못됐습니다.',400);
+      check(!seen.has(row.material_code),'동일 상품코드가 중복됐습니다.',400);seen.add(row.material_code);
+      check(typeof row.material_name==='string' && row.material_name.trim().length>0 && row.material_name.length<=200,'상품명이 잘못됐습니다.',400);
+      check(typeof row.specification==='string' && row.specification.length<=500,'규격이 잘못됐습니다.',400);
+      check(Number.isSafeInteger(row.stock_quantity) && row.stock_quantity>=0 && row.stock_quantity<=100000000,'현재재고가 잘못됐습니다.',400);
+      upsert.run(row.material_code,row.material_name.trim(),row.specification.trim(),row.stock_quantity,now);
+    }
+    mergeSyncedMaterials();
+    store.setSetting('inventory_sync_status','completed');
+    store.setSetting('inventory_sync_completed_at',now);
+    store.setSetting('inventory_sync_count',rows.length);
+    store.setSetting('inventory_sync_error','');
+    return inventoryState();
+  });
+
+  const kioskCatalog=() => {
+    mergeSyncedMaterials();
+    const stockRows=new Map(store.db.prepare('SELECT * FROM material_stock').all().map(row=>[row.material_code,row]));
+    const activeReservations=store.db.prepare(`SELECT material_code,COALESCE(SUM(quantity),0) AS quantity
+      FROM request_items WHERE status IN ('pending','approved','claimed','submitting','needs_review') GROUP BY material_code`).all();
+    const activeMap=new Map(activeReservations.map(row=>[row.material_code,row.quantity]));
+    const completedAfterSync=store.db.prepare(`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity
+      FROM request_items i JOIN material_stock s ON s.material_code=i.material_code
+      WHERE i.status='completed' AND i.updated_at>s.synced_at
+        AND i.evidence!='rejected_batch_completed'
+        AND i.evidence NOT LIKE 'HOMS 조회 결과%'
+      GROUP BY i.material_code`).all();
+    const completedMap=new Map(completedAfterSync.map(row=>[row.material_code,row.quantity]));
+    return {
+      ...catalog,
+      inventory_sync:inventoryState(),
+      materials:catalog.materials.map(material => {
+        const stock=stockRows.get(material.material_code);
+        if(!stock) return {...material,available_stock:null,stock_quantity:null,specification:''};
+        const reserved=(activeMap.get(material.material_code)||0)+(completedMap.get(material.material_code)||0);
+        return {...material,specification:stock.specification,stock_quantity:stock.stock_quantity,
+          available_stock:Math.max(0,stock.stock_quantity-reserved),stock_synced_at:stock.synced_at};
+      })
+    };
+  };
+
   const app = express(); app.disable('x-powered-by');
   app.set('trust proxy',1);
   app.set('view engine','ejs'); app.set('views',path.join(__dirname,'views'));
@@ -34,7 +135,7 @@ function createApp(config = process.env) {
     scriptSrcAttr:["'unsafe-inline'"],styleSrc:["'self'","'unsafe-inline'",'https://cdn.jsdelivr.net','https://fonts.googleapis.com'],
     fontSrc:["'self'",'https://fonts.gstatic.com'],imgSrc:["'self'",'data:'],connectSrc:["'self'"],frameAncestors:["'none'"]
   }},crossOriginEmbedderPolicy:false}));
-  app.use(express.json({limit:'32kb'}));
+  app.use(express.json({limit:'256kb'}));
   app.use('/public',express.static(path.join(__dirname,'public')));
   app.get('/ping',(req,res) => res.send('pong'));
   app.get('/healthz',(req,res) => {store.db.prepare('SELECT 1').get();res.json({ok:true});});
@@ -63,14 +164,15 @@ function createApp(config = process.env) {
     next();
   };
   app.use('/api',(req,res,next) => {res.set('Cache-Control','no-store');next();});
-  app.get('/api/catalog',auth('KIOSK'),(req,res) => res.json(catalog));
+  app.get('/api/catalog',auth('KIOSK'),(req,res) => res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res) => res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
-  app.get('/api/admin/overview',auth('ADMIN'),(req,res) => res.json(store.overview()));
+  app.get('/api/admin/overview',auth('ADMIN'),(req,res) => res.json({...store.overview(),inventory_sync:inventoryState()}));
   app.get('/api/admin/database',auth('ADMIN'),(req,res) => res.json(store.inspection()));
   app.get('/api/admin/events/:id',auth('ADMIN'),(req,res) => res.json(store.db.prepare('SELECT * FROM events WHERE item_id=? ORDER BY id').all(req.params.id)));
   app.post('/api/admin/pause',auth('ADMIN'),(req,res) => res.json(store.pause(req.body.paused)));
   app.post('/api/admin/approve-all',auth('ADMIN'),(req,res) => res.json(store.approveAll()));
   app.post('/api/admin/batch/start',auth('ADMIN'),(req,res) => res.json(store.startBatch()));
+  app.post('/api/admin/inventory-sync',auth('ADMIN'),(req,res) => res.json(requestInventorySync()));
   app.post('/api/admin/items/:id',auth('ADMIN'),(req,res) => res.json(store.adminAction(req.params.id,req.body.action,req.body.note)));
   let snapshotBusy=false;
   app.get('/api/admin/backup',auth('ADMIN'),(req,res,next) => {
@@ -83,9 +185,11 @@ function createApp(config = process.env) {
     catch(error) {cleanup();next(error);}
   });
   app.post('/api/worker/heartbeat',auth('WORKER'),(req,res) => res.json(store.heartbeat(req.body.mode)));
-  app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json(store.preview()));
+  app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json({...store.preview(),inventory_sync:inventoryState()}));
   app.post('/api/worker/claim',auth('WORKER'),(req,res) => res.json({item:store.claim()}));
   app.post('/api/worker/batch/finish',auth('WORKER'),(req,res) => res.json(store.finishBatch()));
+  app.post('/api/worker/inventory-sync',auth('WORKER'),(req,res) => res.json(applyInventorySync(req.body.request_id,req.body.items)));
+  app.post('/api/worker/inventory-sync/fail',auth('WORKER'),(req,res) => res.json(failInventorySync(req.body.request_id,req.body.error)));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res) => res.json(store.item(req.params.id)));
   app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res) => res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
   app.get('/',(req,res) => res.redirect('/main'));
