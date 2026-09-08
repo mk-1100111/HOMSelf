@@ -35,6 +35,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
     materials:(catalog.materials||[]).map(item=>({
       material_code:item.material_code,
       material_name:item.material_name,
+      ...(item.display_name?{display_name:item.display_name}:{}),
       material_unit:item.material_unit,
       specification:item.specification||'',
       visible:item.visible!==false,
@@ -48,6 +49,14 @@ function installCatalogAdmin({app,auth,catalog,store}){
       const error=new Error('이미지는 JPEG/PNG/WebP 형식이며 압축 후 800KB 이하여야 합니다.');error.status=400;throw error;
     }
     return value;
+  };
+
+  const validateDisplayName=value=>{
+    if(value===null || value===undefined) return '';
+    if(typeof value!=='string'){const error=new Error('키오스크 표시명이 잘못됐습니다.');error.status=400;throw error;}
+    const name=value.trim();
+    if(name.length>80){const error=new Error('키오스크 표시명은 80자 이하여야 합니다.');error.status=400;throw error;}
+    return name;
   };
 
   const markPending=()=>{
@@ -87,6 +96,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       const target=(catalog.materials||[]).find(item=>item.material_code===key);
       if(!target){const e=new Error('부자재를 찾을 수 없습니다.');e.status=404;throw e;}
       if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
+      if('display_name' in patch){const name=validateDisplayName(patch.display_name);if(name)target.display_name=name;else delete target.display_name;}
       if('material_unit' in patch){const unit=Number(patch.material_unit);if(!Number.isSafeInteger(unit)||unit<1||unit>100000){const e=new Error('불출단위는 1~100000 정수여야 합니다.');e.status=400;throw e;}target.material_unit=unit;}
       if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
     }else{const e=new Error('관리 대상이 잘못됐습니다.');e.status=400;throw e;}
@@ -117,6 +127,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
         let target=byCode.get(row.material_code);
         if(!target){target={material_code:row.material_code,material_name:row.material_name,material_unit:1,visible:true};catalog.materials.push(target);byCode.set(row.material_code,target);}
         target.material_name=row.material_name;
+        if(typeof row.display_name==='string'&&row.display_name.trim()) target.display_name=row.display_name.trim();
         if(Number.isSafeInteger(row.material_unit)&&row.material_unit>0) target.material_unit=row.material_unit;
         if(typeof row.specification==='string') target.specification=row.specification;
         count++;
@@ -137,6 +148,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       let target=byCode.get(row.material_code);
       if(!target){target={material_code:row.material_code,material_name:row.material_name,material_unit:1,visible:true};catalog.materials.push(target);byCode.set(row.material_code,target);}
       target.material_name=row.material_name;
+      if(typeof row.display_name==='string'&&row.display_name.trim()) target.display_name=row.display_name.trim(); else delete target.display_name;
       if(Number.isSafeInteger(row.material_unit)&&row.material_unit>0) target.material_unit=row.material_unit;
       if(typeof row.specification==='string') target.specification=row.specification; else delete target.specification;
       target.visible=row.visible!==false;
