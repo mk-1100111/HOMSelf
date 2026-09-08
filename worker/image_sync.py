@@ -55,7 +55,7 @@ def execute_image_sync(api,adapter,cfg,state):
     api.post('material-image-sync/start',{'request_id':request_id})
     catalog,_,_,_,_=load_catalog(cfg)
     server_targets={str(item.get('material_code')) for item in (state.get('materials') or []) if isinstance(item,dict)}
-    targets=[item for item in catalog.get('materials',[]) if isinstance(item,dict) and str(item.get('material_code')) in server_targets and not item.get('image_data') and not item.get('image_path')]
+    targets=[item for item in catalog.get('materials',[]) if isinstance(item,dict) and str(item.get('material_code')) in server_targets and not item.get('image_data')]
     print('이미지 동기화 시작:',len(targets),'건',flush=True)
     saved={};skipped=0
     try:
