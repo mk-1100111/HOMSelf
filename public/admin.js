@@ -1,7 +1,7 @@
 const adminTokenKey='homself.admin.token';
 let token=sessionStorage.getItem(adminTokenKey) || '';
 const $=id=>document.getElementById(id);
-const labels={pending:'접수',approved:'승인',claimed:'준비 중',submitting:'불출 중',needs_review:'확인 필요',cancelled:'반려'};
+const labels={pending:'접수',approved:'승인',claimed:'준비 중',submitting:'불출 중',needs_review:'확인 필요',cancelled:'반려',completed:'완료'};
 function message(text){$('message').textContent=text;}
 async function api(path,body){
   const response=await fetch('/api/admin/'+path,{method:body!==undefined?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})});
@@ -27,14 +27,6 @@ function utilityButton(text,fn,className=''){
   const b=document.createElement('button');b.type='button';b.textContent=text;b.className='action-button '+className;
   b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){message(e.message);}finally{b.disabled=false;}};
   return b;
-}
-function completedIcon(){
-  const icon=document.createElement('span');
-  icon.className='completed-icon';
-  icon.textContent='✓';
-  icon.title='완료';
-  icon.setAttribute('aria-label','완료');
-  return icon;
 }
 let refreshing=false;
 async function refresh(){
@@ -92,11 +84,7 @@ async function refreshData(){
     const values=[new Date(item.created_at).toLocaleString(),item.manager_name,item.material_name+'\n'+item.material_code,item.quantity];
     for(const text of values){const cell=document.createElement('td');cell.textContent=text;row.append(cell);}
     const statusCell=document.createElement('td');
-    if(item.status==='completed') statusCell.append(completedIcon());
-    else {
-      const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status]||item.status;statusCell.append(pill);
-    }
-    row.append(statusCell);
+    const pill=document.createElement('span');pill.className='status-pill status-'+item.status;pill.textContent=labels[item.status]||item.status;statusCell.append(pill);row.append(statusCell);
     const cell=document.createElement('td');cell.className='decision-cell';
     if(['pending','approved','cancelled'].includes(item.status)){
       const locked=currentBatchIds.has(item.id);
@@ -109,9 +97,7 @@ async function refreshData(){
         utilityButton('불출 완료 확인',()=>action(item,'confirm_completed'),'confirm'),
         utilityButton('미불출 확인',()=>action(item,'confirm_not_submitted'))
       );
-    }else if(item.status==='completed'){
-      cell.append(completedIcon());
-    }else{
+    }else if(item.status!=='completed'){
       const working=document.createElement('span');working.className='locked-text';working.textContent='처리 중';cell.append(working);
     }
     row.append(cell);$('items').append(row);
