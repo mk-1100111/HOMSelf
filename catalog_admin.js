@@ -46,12 +46,40 @@ function installCatalogAdmin({app,auth,catalog,store}){
     completed_at:Number(store.setting('catalog_persist_completed_at')||0)
   });
 
+  const imageSyncState=()=>({
+    status:store.setting('material_image_sync_status')||'idle',
+    request_id:store.setting('material_image_sync_request_id')||'',
+    requested_at:Number(store.setting('material_image_sync_requested_at')||0),
+    started_at:Number(store.setting('material_image_sync_started_at')||0),
+    completed_at:Number(store.setting('material_image_sync_completed_at')||0),
+    updated:Number(store.setting('material_image_sync_updated')||0),
+    skipped:Number(store.setting('material_image_sync_skipped')||0),
+    error:store.setting('material_image_sync_error')||''
+  });
+  const requestImageSync=()=>{
+    const current=imageSyncState();
+    if(current.status==='requested'||current.status==='running'){
+      const e=new Error('이미지 동기화가 이미 진행 중입니다.');e.status=409;throw e;
+    }
+    const requestId=crypto.randomUUID();
+    store.setSetting('material_image_sync_status','requested');
+    store.setSetting('material_image_sync_request_id',requestId);
+    store.setSetting('material_image_sync_requested_at',Date.now());
+    store.setSetting('material_image_sync_started_at','0');
+    store.setSetting('material_image_sync_completed_at','0');
+    store.setSetting('material_image_sync_updated','0');
+    store.setSetting('material_image_sync_skipped','0');
+    store.setSetting('material_image_sync_error','');
+    return imageSyncState();
+  };
+
   app.get('/api/admin/catalog-management',auth('ADMIN'),(req,res)=>{
     ensure();
     res.json({
       managers:(catalog.managers||[]).map(name=>({name,...(catalog.manager_settings[name]||{visible:true}),visible:(catalog.manager_settings[name]||{}).visible!==false})),
       materials:(catalog.materials||[]).map(item=>({...item,visible:item.visible!==false})),
-      persistence:pendingState()
+      persistence:pendingState(),
+      image_sync:imageSyncState()
     });
   });
 
@@ -74,6 +102,28 @@ function installCatalogAdmin({app,auth,catalog,store}){
     }else{const e=new Error('관리 대상이 잘못됐습니다.');e.status=400;throw e;}
     const revision=markPending();
     res.json({ok:true,revision,persistence:pendingState()});
+  });
+
+  app.post('/api/admin/material-image-sync',auth('ADMIN'),(req,res)=>res.json(requestImageSync()));
+
+  app.get('/api/worker/material-image-sync',auth('WORKER'),(req,res)=>res.json({...imageSyncState(),materials:staticCatalog().materials.filter(item=>!item.image_data)}));
+  app.post('/api/worker/material-image-sync/start',auth('WORKER'),(req,res)=>{
+    const requestId=String(req.body&&req.body.request_id||'');
+    const state=imageSyncState();
+    if(state.status!=='requested'||state.request_id!==requestId){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}
+    store.setSetting('material_image_sync_status','running');store.setSetting('material_image_sync_started_at',Date.now());res.json(imageSyncState());
+  });
+  app.post('/api/worker/material-image-sync/complete',auth('WORKER'),(req,res)=>{
+    const requestId=String(req.body&&req.body.request_id||'');
+    const state=imageSyncState();
+    if(state.request_id!==requestId){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}
+    store.setSetting('material_image_sync_status','completed');store.setSetting('material_image_sync_completed_at',Date.now());store.setSetting('material_image_sync_updated',Number(req.body&&req.body.updated||0));store.setSetting('material_image_sync_skipped',Number(req.body&&req.body.skipped||0));store.setSetting('material_image_sync_error','');res.json(imageSyncState());
+  });
+  app.post('/api/worker/material-image-sync/fail',auth('WORKER'),(req,res)=>{
+    const requestId=String(req.body&&req.body.request_id||'');
+    const state=imageSyncState();
+    if(state.request_id!==requestId){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}
+    store.setSetting('material_image_sync_status','failed');store.setSetting('material_image_sync_completed_at',Date.now());store.setSetting('material_image_sync_error',String(req.body&&req.body.error||'이미지 동기화 실패').slice(0,300));res.json(imageSyncState());
   });
 
   app.get('/api/worker/catalog-persist',auth('WORKER'),(req,res)=>{
