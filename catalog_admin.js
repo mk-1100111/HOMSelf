@@ -1,15 +1,7 @@
 const crypto=require('node:crypto');
-
 function installCatalogAdmin({app,auth,catalog,store}){
   const serverBootId=crypto.randomUUID();
-
-  const ensure=()=>{
-    if(!catalog.manager_settings || typeof catalog.manager_settings!=='object' || Array.isArray(catalog.manager_settings)) catalog.manager_settings={};
-    for(const name of catalog.managers||[]) if(!catalog.manager_settings[name]) catalog.manager_settings[name]={visible:true};
-    for(const item of catalog.materials||[]) if(item.visible===undefined) item.visible=true;
-  };
-  ensure();
-
+  const ensure=()=>{if(!catalog.manager_settings||typeof catalog.manager_settings!=='object'||Array.isArray(catalog.manager_settings))catalog.manager_settings={};for(const name of catalog.managers||[])if(!catalog.manager_settings[name])catalog.manager_settings[name]={visible:true};for(const item of catalog.materials||[])if(item.visible===undefined)item.visible=true;};ensure();
   const staticCatalog=()=>({managers:[...(catalog.managers||[])],manager_settings:JSON.parse(JSON.stringify(catalog.manager_settings||{})),materials:(catalog.materials||[]).map(item=>({material_code:item.material_code,material_name:item.material_name,material_unit:item.material_unit,specification:item.specification||'',visible:item.visible!==false,...(item.image_path?{image_path:item.image_path}:{}),...(item.image_data?{image_data:item.image_data}:{})}))});
   const validateImage=value=>{if(value===null||value==='')return null;if(typeof value!=='string'||value.length>800000||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)){const e=new Error('이미지는 JPEG/PNG/WebP 형식이며 압축 후 800KB 이하여야 합니다.');e.status=400;throw e;}return value;};
   const markPending=()=>{const revision=crypto.randomUUID();store.setSetting('catalog_persist_revision',revision);store.setSetting('catalog_persist_pending','1');store.setSetting('catalog_persist_requested_at',Date.now());return revision;};
@@ -26,6 +18,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
   app.post('/api/worker/material-image-sync/start',auth('WORKER'),(req,res)=>{const id=String(req.body&&req.body.request_id||''),state=imageSyncState();if(!['requested','running'].includes(state.status)||state.request_id!==id){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}store.setSetting('material_image_sync_status','running');if(!state.started_at)store.setSetting('material_image_sync_started_at',Date.now());res.json(imageSyncState());});
   app.post('/api/worker/material-image-sync/complete',auth('WORKER'),(req,res)=>{const id=String(req.body&&req.body.request_id||''),state=imageSyncState();if(state.request_id!==id){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}store.setSetting('material_image_sync_status','completed');store.setSetting('material_image_sync_completed_at',Date.now());store.setSetting('material_image_sync_updated',Number(req.body&&req.body.updated||0));store.setSetting('material_image_sync_skipped',Number(req.body&&req.body.skipped||0));store.setSetting('material_image_sync_error','');res.json(imageSyncState());});
   app.post('/api/worker/material-image-sync/fail',auth('WORKER'),(req,res)=>{const id=String(req.body&&req.body.request_id||''),state=imageSyncState();if(state.request_id!==id){const e=new Error('이미지 동기화 요청이 변경됐습니다.');e.status=409;throw e;}store.setSetting('material_image_sync_status','failed');store.setSetting('material_image_sync_completed_at',Date.now());store.setSetting('material_image_sync_error',String(req.body&&req.body.error||'이미지 동기화 실패').slice(0,300));res.json(imageSyncState());});
+  app.post('/api/worker/catalog-image-apply',auth('WORKER'),(req,res)=>{const code=String(req.body&&req.body.material_code||'').trim(),path=String(req.body&&req.body.image_path||'').trim(),image=validateImage(req.body&&req.body.image_data);const target=(catalog.materials||[]).find(item=>item.material_code===code);if(!target){const e=new Error('이미지 반영 부자재를 찾을 수 없습니다.');e.status=404;throw e;}if(path)target.image_path=path;if(image)target.image_data=image;res.json({ok:true,material_code:code});});
 
   app.get('/api/worker/catalog-persist',auth('WORKER'),(req,res)=>{const state=pendingState();res.json({...state,catalog:state.pending?staticCatalog():null});});
   app.post('/api/worker/catalog-persist/complete',auth('WORKER'),(req,res)=>{const revision=String(req.body&&req.body.revision||'');if(store.setting('catalog_persist_revision')!==revision){const e=new Error('catalog 저장 요청이 이미 변경됐습니다.');e.status=409;throw e;}store.setSetting('catalog_persist_pending','0');store.setSetting('catalog_persist_completed_at',Date.now());res.json({ok:true,...pendingState()});});
