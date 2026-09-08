@@ -39,13 +39,37 @@ function createApp(config = process.env) {
 
   const mergeSyncedMaterials=() => {
     const known=new Set(catalog.materials.map(m=>m.material_code));
-    for(const row of store.db.prepare('SELECT material_code,material_name FROM material_stock ORDER BY material_code').all()) {
+    for(const row of store.db.prepare('SELECT material_code,material_name,specification FROM material_stock ORDER BY material_code').all()) {
       if(known.has(row.material_code)) continue;
-      catalog.materials.push({material_code:row.material_code,material_name:row.material_name,material_unit:1});
+      catalog.materials.push({material_code:row.material_code,material_name:row.material_name,material_unit:1,specification:row.specification||''});
       known.add(row.material_code);
     }
   };
   mergeSyncedMaterials();
+
+  const mergePersistentMaterials=rows => {
+    check(Array.isArray(rows) && rows.length>0 && rows.length<=1000,'영구 부자재 catalog가 잘못됐습니다.',400);
+    const byCode=new Map(catalog.materials.map(item=>[item.material_code,item]));
+    let count=0;
+    for(const row of rows) {
+      check(row && typeof row.material_code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(row.material_code),'영구 catalog 상품코드가 잘못됐습니다.',400);
+      check(typeof row.material_name==='string' && row.material_name.trim().length>0 && row.material_name.length<=200,'영구 catalog 상품명이 잘못됐습니다.',400);
+      check(Number.isSafeInteger(row.material_unit) && row.material_unit>0 && row.material_unit<=100000,'영구 catalog 불출단위가 잘못됐습니다.',400);
+      const specification=typeof row.specification==='string'?row.specification.trim():'';
+      const existing=byCode.get(row.material_code);
+      if(existing) {
+        existing.material_name=row.material_name.trim();
+        existing.material_unit=row.material_unit;
+        if(specification) existing.specification=specification;
+      } else {
+        const item={material_code:row.material_code,material_name:row.material_name.trim(),material_unit:row.material_unit};
+        if(specification) item.specification=specification;
+        catalog.materials.push(item);byCode.set(item.material_code,item);
+      }
+      count++;
+    }
+    return {count};
+  };
 
   const inventoryState=() => ({
     status:store.setting('inventory_sync_status') || 'idle',
@@ -119,9 +143,9 @@ function createApp(config = process.env) {
       inventory_sync:inventoryState(),
       materials:catalog.materials.map(material => {
         const stock=stockRows.get(material.material_code);
-        if(!stock) return {...material,available_stock:null,stock_quantity:null,specification:''};
+        if(!stock) return {...material,available_stock:null,stock_quantity:null,specification:material.specification||''};
         const reserved=(activeMap.get(material.material_code)||0)+(completedMap.get(material.material_code)||0);
-        return {...material,specification:stock.specification,stock_quantity:stock.stock_quantity,
+        return {...material,specification:stock.specification||material.specification||'',stock_quantity:stock.stock_quantity,
           available_stock:Math.max(0,stock.stock_quantity-reserved),stock_synced_at:stock.synced_at};
       })
     };
@@ -186,6 +210,7 @@ function createApp(config = process.env) {
   });
   app.post('/api/worker/heartbeat',auth('WORKER'),(req,res) => res.json(store.heartbeat(req.body.mode)));
   app.get('/api/worker/preview',auth('WORKER'),(req,res) => res.json({...store.preview(),inventory_sync:inventoryState()}));
+  app.post('/api/worker/catalog-sync',auth('WORKER'),(req,res) => res.json(mergePersistentMaterials(req.body.materials)));
   app.post('/api/worker/claim',auth('WORKER'),(req,res) => res.json({item:store.claim()}));
   app.post('/api/worker/batch/finish',auth('WORKER'),(req,res) => res.json(store.finishBatch()));
   app.post('/api/worker/inventory-sync',auth('WORKER'),(req,res) => res.json(applyInventorySync(req.body.request_id,req.body.items)));
