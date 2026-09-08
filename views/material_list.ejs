@@ -123,7 +123,17 @@
 
         let material_list = <%- JSON.stringify(materials) %>;
 
+        function setMaterialImage(img,placeholder,material){
+            if(material.image_data){img.src=material.image_data;return;}
+            const base='/public/static/img/material_list/'+encodeURIComponent(material.material_code);
+            const candidates=[base+'.jpg',base+'.png',base+'.jpeg',base+'.webp'];
+            let index=0;
+            img.onerror=()=>{index++;if(index<candidates.length)img.src=candidates[index];else{img.hidden=true;placeholder.hidden=false;}};
+            img.src=candidates[0];
+        }
+
         function renderMaterialCard(material) {
+            if (material.visible === false) return;
             if (Number.isFinite(material.available_stock) && material.available_stock <= 0) return;
             const col=document.createElement('div');
             col.className='col';
@@ -143,12 +153,12 @@
             const placeholder=document.createElement('div');
             placeholder.className='material-image-placeholder';
             placeholder.textContent='이미지 준비중';
+            placeholder.hidden=true;
             const img=document.createElement('img');
             img.className='card-img-top material-image';
             img.alt=material.material_name;
             img.onload=()=>{placeholder.hidden=true;img.hidden=false;};
-            img.onerror=()=>{img.hidden=true;placeholder.hidden=false;};
-            img.src='/public/static/img/material_list/'+encodeURIComponent(material.material_name)+'.jpg';
+            setMaterialImage(img,placeholder,material);
             imageWrap.append(img,placeholder);
 
             const body=document.createElement('div');
