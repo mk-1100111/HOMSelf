@@ -2,136 +2,33 @@
 const pendingKey = 'homself.pending.v1';
 const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
 
+if(typeof renderMaterialCard==='function'){
+  const baseRenderMaterialCard=renderMaterialCard;
+  renderMaterialCard=function(material){
+    if(material.visible===false) return;
+    if(Number.isFinite(material.available_stock)&&material.available_stock<=0) return;
+    baseRenderMaterialCard(material);
+    if(material.image_data){
+      const last=document.getElementById('material-lists')?.lastElementChild;
+      const img=last?.querySelector('.material-image');
+      if(img) img.src=material.image_data;
+    }
+  };
+}
+
 function showRequestSuccess(){
   if(!document || typeof document.createElement!=='function' || !document.body || !document.head) return Promise.resolve();
   return new Promise(resolve=>{
     let style=document.getElementById('homself-success-style');
     if(!style){
-      style=document.createElement('style');
-      style.id='homself-success-style';
-      style.textContent=`
-        .homself-success-overlay{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Jua',sans-serif;overflow:hidden;background:#111}
-        .homself-success-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;filter:brightness(.72);transform:scale(1.01)}
-        .homself-success-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.38))}
-        .homself-success-card{position:relative;z-index:2;width:min(520px,94vw);background:rgba(255,255,255,.94);backdrop-filter:blur(5px);border-radius:24px;padding:42px 32px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-        .homself-success-icon{width:72px;height:72px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:#d1e7dd;color:#198754;font-size:42px;line-height:1}
-        .homself-success-title{margin:0;font-size:2.2rem;font-weight:400;color:#20242b}
-        .homself-success-text{margin:16px 0 12px;color:#606b78;font-size:1.25rem;line-height:1.5}
-        .homself-success-countdown{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;margin:0 0 18px;border-radius:999px;background:#eef2f6;color:#667180;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;line-height:1}
-        .homself-success-button{width:100%;border:0;border-radius:14px;padding:15px 20px;background:#0d6efd;color:#fff;font:inherit;font-size:1.3rem;cursor:pointer}
-        @media(max-width:600px){.homself-success-card{padding:34px 22px 24px}.homself-success-title{font-size:1.9rem}.homself-success-text{font-size:1.1rem}}
-      `;
-      document.head.appendChild(style);
+      style=document.createElement('style');style.id='homself-success-style';style.textContent=`.homself-success-overlay{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:24px;font-family:'Jua',sans-serif;overflow:hidden;background:#111}.homself-success-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;filter:brightness(.72);transform:scale(1.01)}.homself-success-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.38))}.homself-success-card{position:relative;z-index:2;width:min(520px,94vw);background:rgba(255,255,255,.94);backdrop-filter:blur(5px);border-radius:24px;padding:42px 32px 30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}.homself-success-icon{width:72px;height:72px;margin:0 auto 18px;border-radius:50%;display:grid;place-items:center;background:#d1e7dd;color:#198754;font-size:42px;line-height:1}.homself-success-title{margin:0;font-size:2.2rem;font-weight:400;color:#20242b}.homself-success-text{margin:16px 0 12px;color:#606b78;font-size:1.25rem;line-height:1.5}.homself-success-countdown{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;margin:0 0 18px;border-radius:999px;background:#eef2f6;color:#667180;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;line-height:1}.homself-success-button{width:100%;border:0;border-radius:14px;padding:15px 20px;background:#0d6efd;color:#fff;font:inherit;font-size:1.3rem;cursor:pointer}@media(max-width:600px){.homself-success-card{padding:34px 22px 24px}.homself-success-title{font-size:1.9rem}.homself-success-text{font-size:1.1rem}}`;document.head.appendChild(style);
     }
-
-    const imageNumber=Math.floor(Math.random()*11)+1;
-    const backgroundSrc='/public/static/img/main_img/main'+imageNumber+'.png';
-    const overlay=document.createElement('div');
-    overlay.className='homself-success-overlay';
-    overlay.innerHTML=`
-      <img class="homself-success-bg" src="${backgroundSrc}" alt="">
-      <div class="homself-success-shade"></div>
-      <div class="homself-success-card" role="dialog" aria-modal="true" aria-labelledby="homself-success-title">
-        <div class="homself-success-icon">✓</div>
-        <h2 class="homself-success-title" id="homself-success-title">요청 접수 완료</h2>
-        <p class="homself-success-text">관리자 승인 후 불출이 진행됩니다.</p>
-        <div class="homself-success-countdown" aria-label="자동 확인 카운트다운">3</div>
-        <button class="homself-success-button" type="button">확인</button>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const btn=overlay.querySelector('button');
-    const countdown=overlay.querySelector('.homself-success-countdown');
-    let remaining=3;
-    let done=false;
-    let timer=null;
-    let interval=null;
-
-    const finish=()=>{
-      if(done)return;
-      done=true;
-      clearTimeout(timer);
-      clearInterval(interval);
-      overlay.remove();
-      resolve();
-    };
-
-    btn.focus();
-    btn.onclick=finish;
-    interval=setInterval(()=>{
-      remaining-=1;
-      if(remaining>0) countdown.textContent=String(remaining);
-    },1000);
-    timer=setTimeout(finish,3000);
+    const imageNumber=Math.floor(Math.random()*11)+1,backgroundSrc='/public/static/img/main_img/main'+imageNumber+'.png';const overlay=document.createElement('div');overlay.className='homself-success-overlay';overlay.innerHTML=`<img class="homself-success-bg" src="${backgroundSrc}" alt=""><div class="homself-success-shade"></div><div class="homself-success-card" role="dialog" aria-modal="true" aria-labelledby="homself-success-title"><div class="homself-success-icon">✓</div><h2 class="homself-success-title" id="homself-success-title">요청 접수 완료</h2><p class="homself-success-text">관리자 승인 후 불출이 진행됩니다.</p><div class="homself-success-countdown" aria-label="자동 확인 카운트다운">3</div><button class="homself-success-button" type="button">확인</button></div>`;document.body.appendChild(overlay);
+    const btn=overlay.querySelector('button'),countdown=overlay.querySelector('.homself-success-countdown');let remaining=3,done=false,timer=null,interval=null;const finish=()=>{if(done)return;done=true;clearTimeout(timer);clearInterval(interval);overlay.remove();resolve();};btn.focus();btn.onclick=finish;interval=setInterval(()=>{remaining-=1;if(remaining>0)countdown.textContent=String(remaining);},1000);timer=setTimeout(finish,3000);
   });
 }
 
-window.getHomselfCatalog=async function(){
-  try {
-    let token=sessionStorage.getItem('homself.kiosk.token');
-    if(!token) token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');
-    if(!token)return null;
-    token=token.trim();
-    if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다. 기존 긴 키는 전환 기간에만 사용할 수 있습니다.');}
-    const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});
-    if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}
-    sessionStorage.setItem('homself.kiosk.token',token);
-    return await response.json();
-  } catch(error){alert(error.message);return null;}
-};
-async function transmitPending() {
-  const pending=JSON.parse(localStorage.getItem(pendingKey) || 'null');
-  if(!pending) return;
-  let token=sessionStorage.getItem('homself.kiosk.token');
-  if(!token) {
-    token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');
-    if(!token) return;
-  }
-  token=token.trim();
-  if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}
-  sessionStorage.setItem('homself.kiosk.token',token);
-  const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',
-    Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});
-  const result=await response.json();
-  if(!response.ok) {
-    if(response.status === 401 || response.status === 429) sessionStorage.removeItem('homself.kiosk.token');
-    if(response.status === 400) localStorage.removeItem(pendingKey);
-    throw new Error(result.error || '접수 결과를 확인하지 못했습니다.');
-  }
-  localStorage.removeItem(pendingKey);
-  await showRequestSuccess();
-  location.assign('/main');
-}
-window.sendCart=async function() {
-  if(window.homselfSending) return;
-  try {
-    if(!localStorage.getItem(pendingKey)) {
-      const items=Object.entries(cartQuantities).map(([name,count]) => {
-        const m=material_list.find(m=>m.material_name === name);
-        return {material_code:m.material_code,quantity:count*m.material_unit};
-      });
-      if(!items.length) {alert('장바구니가 비어 있습니다.');return;}
-      if(items.some(i=>!Number.isSafeInteger(i.quantity)||i.quantity<1||i.quantity>100000)){alert('수량은 1~100000 범위여야 합니다.');return;}
-      const manager_name=new URLSearchParams(location.search).get('managerName');
-      if(!manager_name) {alert('매니저를 다시 선택하세요.');return;}
-      const pending={key:crypto.randomUUID(),body:{manager_name,items}};
-      localStorage.setItem(pendingKey,JSON.stringify(pending));
-    } else if(!confirm('접수 확인이 끝나지 않은 이전 요청을 같은 번호로 재확인합니다. 계속할까요?')) return;
-    window.homselfSending=true;
-    if(typeof timeoutId !== 'undefined') clearTimeout(timeoutId);
-    if(typeof countdownInterval !== 'undefined') clearInterval(countdownInterval);
-    await transmitPending();
-  } catch(error) {
-    alert(error.message+'\n기존 요청은 보존했습니다. 새 요청을 만들지 말고 재확인하세요.');
-  } finally {window.homselfSending=false;}
-};
-const notice=document.getElementById('pending-notice');
-if(notice && localStorage.getItem(pendingKey)) {
-  notice.hidden=false;
-  notice.textContent='접수 확인이 끝나지 않은 요청이 있습니다. 새 요청 전에 확인하세요. ';
-  const button=document.createElement('button');button.textContent='같은 요청 재확인';
-  button.onclick=async()=>{button.disabled=true;try{await transmitPending();}catch(e){alert(e.message);}finally{button.disabled=false;}};
-  notice.append(button);
-  const managerLists=document.getElementById('manager-lists');
-  if(managerLists) managerLists.style.display='none';
-}
+window.getHomselfCatalog=async function(){try{let token=sessionStorage.getItem('homself.kiosk.token');if(!token)token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');if(!token)return null;token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다. 기존 긴 키는 전환 기간에만 사용할 수 있습니다.');}const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}sessionStorage.setItem('homself.kiosk.token',token);return await response.json();}catch(error){alert(error.message);return null;}};
+async function transmitPending(){const pending=JSON.parse(localStorage.getItem(pendingKey)||'null');if(!pending)return;let token=sessionStorage.getItem('homself.kiosk.token');if(!token){token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');if(!token)return;}token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}sessionStorage.setItem('homself.kiosk.token',token);const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});const result=await response.json();if(!response.ok){if(response.status===401||response.status===429)sessionStorage.removeItem('homself.kiosk.token');if(response.status===400)localStorage.removeItem(pendingKey);throw new Error(result.error||'접수 결과를 확인하지 못했습니다.');}localStorage.removeItem(pendingKey);await showRequestSuccess();location.assign('/main');}
+window.sendCart=async function(){if(window.homselfSending)return;try{if(!localStorage.getItem(pendingKey)){const items=Object.entries(cartQuantities).map(([name,count])=>{const m=material_list.find(m=>m.material_name===name);return {material_code:m.material_code,quantity:count*m.material_unit};});if(!items.length){alert('장바구니가 비어 있습니다.');return;}if(items.some(i=>!Number.isSafeInteger(i.quantity)||i.quantity<1||i.quantity>100000)){alert('수량은 1~100000 범위여야 합니다.');return;}const manager_name=new URLSearchParams(location.search).get('managerName');if(!manager_name){alert('매니저를 다시 선택하세요.');return;}const pending={key:crypto.randomUUID(),body:{manager_name,items}};localStorage.setItem(pendingKey,JSON.stringify(pending));}else if(!confirm('접수 확인이 끝나지 않은 이전 요청을 같은 번호로 재확인합니다. 계속할까요?'))return;window.homselfSending=true;if(typeof timeoutId!=='undefined')clearTimeout(timeoutId);if(typeof countdownInterval!=='undefined')clearInterval(countdownInterval);await transmitPending();}catch(error){alert(error.message+'\n기존 요청은 보존했습니다. 새 요청을 만들지 말고 재확인하세요.');}finally{window.homselfSending=false;}};
+const notice=document.getElementById('pending-notice');if(notice&&localStorage.getItem(pendingKey)){notice.hidden=false;notice.textContent='접수 확인이 끝나지 않은 요청이 있습니다. 새 요청 전에 확인하세요. ';const button=document.createElement('button');button.textContent='같은 요청 재확인';button.onclick=async()=>{button.disabled=true;try{await transmitPending();}catch(e){alert(e.message);}finally{button.disabled=false;}};notice.append(button);const managerLists=document.getElementById('manager-lists');if(managerLists)managerLists.style.display='none';}
