@@ -1,6 +1,10 @@
 const crypto=require('node:crypto');
 
 function installCatalogAdmin({app,auth,catalog,store}){
+  const serverBootId=crypto.randomUUID();
+  const originalPreview=store.preview.bind(store);
+  store.preview=()=>({...originalPreview(),server_boot_id:serverBootId});
+
   const ensure=()=>{
     if(!catalog.manager_settings || typeof catalog.manager_settings!=='object' || Array.isArray(catalog.manager_settings)) catalog.manager_settings={};
     for(const name of catalog.managers||[]) if(!catalog.manager_settings[name]) catalog.manager_settings[name]={visible:true};
