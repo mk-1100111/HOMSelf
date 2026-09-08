@@ -2,6 +2,7 @@
 import re
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 class MissingStockResult(RuntimeError):
@@ -91,28 +92,42 @@ class HomsAdapter:
             self.driver.refresh()
 
     def keep_alive(self):
-        original = None
+        """현재 브라우저 탭을 건드리지 않고 HOMS 로그인 쿠키로 백그라운드 GET을 보낸다."""
+        host = urlparse(self.p['stock_url']).hostname or 'homs.biz'
         try:
-            original = self.driver.current_window_handle
-        except Exception:
-            pass
-        try:
-            self._switch_or_reopen('homs_handle', self.p['stock_url'])
-            return self.driver.execute_async_script(
-                """
-                const done = arguments[arguments.length - 1];
-                fetch(arguments[0], {
-                    method: 'GET', credentials: 'include', cache: 'no-store',
-                    headers: {'X-HOMSelf-KeepAlive': '1'}
-                }).then(r => done({ok:r.ok,status:r.status,url:r.url}))
-                  .catch(e => done({ok:false,error:String(e)}));
-                """,
-                self.p['stock_url']
-            )
-        finally:
-            if original and original in self.driver.window_handles:
-                try:self.driver.switch_to.window(original)
-                except Exception:pass
+            raw = self.driver.execute_cdp_cmd('Network.getAllCookies', {})
+            cookies = raw.get('cookies', [])
+        except Exception as error:
+            raise RuntimeError('Chrome HOMS 세션 쿠키를 읽지 못했습니다.') from error
+
+        pairs = []
+        for cookie in cookies:
+            domain = str(cookie.get('domain') or '').lstrip('.')
+            if host == domain or host.endswith('.' + domain):
+                name = cookie.get('name')
+                value = cookie.get('value')
+                if name and value is not None:
+                    pairs.append(f'{name}={value}')
+        if not pairs:
+            raise RuntimeError('HOMS 로그인 쿠키를 찾지 못했습니다.')
+
+        request = Request(
+            self.p['stock_url'],
+            method='GET',
+            headers={
+                'Cookie': '; '.join(pairs),
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'User-Agent': 'Mozilla/5.0 HOMSelf-Session-KeepAlive'
+            }
+        )
+        with urlopen(request, timeout=15) as response:
+            final_url = response.geturl()
+            return {
+                'ok': 200 <= response.status < 400,
+                'status': response.status,
+                'url': final_url
+            }
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
