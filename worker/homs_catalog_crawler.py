@@ -35,7 +35,7 @@ SEARCH_XPATH = '//*[@id="_searchBar"]'
 IMAGE_XPATH = '//*[@id="spl_thum_0_0"]/img'
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 LOGIN_WAIT_SECONDS = 180
-RESULT_WAIT_SECONDS = 15
+RESULT_WAIT_SECONDS = 1
 
 
 def run_git(repo: Path, *args: str, capture: bool = False) -> str:
@@ -263,7 +263,7 @@ def search_one(driver, code: str) -> tuple[object | None, str, str]:
         snap = WebDriverWait(
             driver,
             RESULT_WAIT_SECONDS,
-            poll_frequency=0.35,
+            poll_frequency=0.2,
         ).until(settled)
     except TimeoutException:
         return None, "", ""
@@ -392,7 +392,7 @@ def sync_catalog_and_images(
             image, src, text = search_one(driver, code)
             if not src and not text:
                 skipped += 1
-                print("검색 결과 없음 - 기존 정보 유지:", code, flush=True)
+                print("검색 결과 없음 - 1초 확인 후 다음 자재로 이동:", code, flush=True)
                 continue
 
             confirmed_name, specification = parse_result_metadata(
