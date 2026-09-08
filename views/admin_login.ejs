@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HOMSelf 관리자 로그인</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/public/admin.css">
+<link rel="stylesheet" href="/public/admin_login.css">
+</head>
+<body class="admin-login-page">
+<main class="admin-login-shell">
+  <section class="admin-login-card">
+    <a class="admin-login-brand" href="/main">HOMSelf</a>
+    <span class="eyebrow">ADMIN</span>
+    <h1>관리자 로그인</h1>
+    <p>관리자 PIN을 입력하면 불출 관리 화면으로 이동합니다.</p>
+    <form id="admin-login-form" class="admin-login-form">
+      <input id="admin-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="관리자 PIN 4자리" autocomplete="off" autofocus required>
+      <button type="submit">관리자 화면 열기</button>
+    </form>
+    <p id="admin-login-message" class="admin-login-message" role="status"></p>
+  </section>
+</main>
+<script src="/public/admin_login.js"></script>
+</body>
+</html>
