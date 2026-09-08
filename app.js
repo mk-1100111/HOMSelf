@@ -121,7 +121,14 @@ function createApp(config = process.env) {
   app.post('/api/worker/inventory-sync/fail',auth('WORKER'),(req,res)=>res.json(failInventorySync(req.body.request_id,req.body.error)));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res)=>res.json(store.item(req.params.id)));
   app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res)=>res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
-  app.get('/',(req,res)=>res.redirect('/main'));app.get('/main',(req,res)=>res.render('main',{managers:[]}));app.get('/material_list',(req,res)=>res.render('material_list',{materials:[]}));app.get('/manager_list',(req,res)=>res.redirect('/main'));app.get('/admin',(req,res)=>res.render('admin'));app.get('/admin/materials',(req,res)=>res.render('materials_admin'));app.get('/admin/managers',(req,res)=>res.render('managers_admin'));
+  app.get('/',(req,res)=>res.redirect('/main'));
+  app.get('/main',(req,res)=>res.render('main',{managers:[]}));
+  app.get('/material_list',(req,res)=>res.render('material_list',{materials:[]}));
+  app.get('/manager_list',(req,res)=>res.redirect('/main'));
+  app.get('/admin',(req,res)=>res.render('admin_login'));
+  app.get('/admin/releases',(req,res)=>res.render('admin'));
+  app.get('/admin/materials',(req,res)=>res.render('materials_admin'));
+  app.get('/admin/managers',(req,res)=>res.render('managers_admin'));
   app.use((req,res)=>res.status(404).send('페이지를 찾을 수 없습니다.'));
   app.use((error,req,res,next)=>{if(res.headersSent)return next(error);if(!error.status)console.error('HOMSelf request error:',error.code||error.name);res.status(error.status||500).json({error:error.status?error.message:'서버 처리 오류입니다. 같은 요청번호로 재확인하세요.'});});
   return {app,store};
