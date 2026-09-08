@@ -96,13 +96,35 @@ def recover_interrupted(api):
     print('이전 중단 건을 확인 필요로 전환:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
     return 1
 
-def execute_inventory_sync(api, adapter, sync_state):
+def restore_catalog(api,cfg):
+    try:
+        from catalog_persistence import restore_persistent_catalog
+        restore_persistent_catalog(api,cfg)
+        return True
+    except Exception as error:
+        print('GitHub 영구 부자재 catalog 복원 실패:',type(error).__name__,str(error),flush=True)
+        print('재고/불출 기능은 계속 동작하지만 신규 부자재 영구 보존에는 HOMSELF_BACKUP_GITHUB_TOKEN이 필요합니다.',flush=True)
+        return False
+
+def execute_inventory_sync(api, adapter, sync_state, cfg):
     request_id=sync_state.get('request_id')
     if not request_id:
         raise RuntimeError('재고 동기화 요청번호가 없습니다.')
     print('재고 동기화 시작: HOMS 전체 / 90개씩보기',flush=True)
     try:
         rows=adapter.sync_inventory()
+
+        # 재고 수량은 GitHub에 저장하지 않는다. 상품 정적 정보만 기존 catalog와 병합 저장한다.
+        try:
+            from catalog_persistence import persist_inventory_catalog, push_catalog_to_server
+            catalog,added=persist_inventory_catalog(cfg,rows)
+            push_catalog_to_server(api,catalog)
+            if added:
+                print('신규 부자재 영구 catalog 반영 완료:',len(added),'건',flush=True)
+        except Exception as persistence_error:
+            print('신규 부자재 GitHub 영구 저장 실패:',type(persistence_error).__name__,str(persistence_error),flush=True)
+            print('재고 동기화는 계속 진행합니다. HOMSELF_BACKUP_GITHUB_TOKEN 설정을 확인하세요.',flush=True)
+
         result=api.post('inventory-sync',{'request_id':request_id,'items':rows})
         print('재고 동기화 완료:',result.get('count',len(rows)),'건',flush=True)
     except BaseException as error:
@@ -115,7 +137,7 @@ def execute_inventory_sync(api, adapter, sync_state):
         try: adapter.show_admin(refresh=False)
         except Exception: pass
 
-def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
+def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
     previous=None
     last_keepalive=0.0
     while not stop():
@@ -141,7 +163,7 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             print(mode,flush=True);previous=mode
 
         if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):
-            execute_inventory_sync(api,adapter,sync_state)
+            execute_inventory_sync(api,adapter,sync_state,cfg)
             previous=None
             if once:return
             sleep(poll_seconds)
@@ -222,9 +244,10 @@ def main():
             admin_url=cfg['server_url'].rstrip('/') + '/admin'
             adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile')
             recover_interrupted(api)
+            restore_catalog(api,cfg)
             print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True)
             print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True)
-            run_loop(api,adapter,journal,interval,once=args.once)
+            run_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
             if adapter:adapter.close()
