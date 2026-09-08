@@ -2,8 +2,6 @@ const crypto=require('node:crypto');
 
 function installCatalogAdmin({app,auth,catalog,store}){
   const serverBootId=crypto.randomUUID();
-  const originalPreview=store.preview.bind(store);
-  store.preview=()=>({...originalPreview(),server_boot_id:serverBootId});
 
   const ensure=()=>{
     if(!catalog.manager_settings || typeof catalog.manager_settings!=='object' || Array.isArray(catalog.manager_settings)) catalog.manager_settings={};
@@ -21,6 +19,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       material_unit:item.material_unit,
       specification:item.specification||'',
       visible:item.visible!==false,
+      ...(item.image_path?{image_path:item.image_path}:{}),
       ...(item.image_data?{image_data:item.image_data}:{})
     }))
   });
@@ -56,6 +55,10 @@ function installCatalogAdmin({app,auth,catalog,store}){
     skipped:Number(store.setting('material_image_sync_skipped')||0),
     error:store.setting('material_image_sync_error')||''
   });
+
+  const originalPreview=store.preview.bind(store);
+  store.preview=()=>({...originalPreview(),server_boot_id:serverBootId,material_image_sync:imageSyncState()});
+
   const requestImageSync=()=>{
     const current=imageSyncState();
     if(current.status==='requested'||current.status==='running'){
@@ -98,7 +101,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       if(!target){const e=new Error('부자재를 찾을 수 없습니다.');e.status=404;throw e;}
       if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
       if('material_unit' in patch){const unit=Number(patch.material_unit);if(!Number.isSafeInteger(unit)||unit<1||unit>100000){const e=new Error('불출단위는 1~100000 정수여야 합니다.');e.status=400;throw e;}target.material_unit=unit;}
-      if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
+      if('image_data' in patch){const image=validateImage(patch.image_data);delete target.image_path;if(image)target.image_data=image;else delete target.image_data;}
     }else{const e=new Error('관리 대상이 잘못됐습니다.');e.status=400;throw e;}
     const revision=markPending();
     res.json({ok:true,revision,persistence:pendingState()});
@@ -106,7 +109,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
 
   app.post('/api/admin/material-image-sync',auth('ADMIN'),(req,res)=>res.json(requestImageSync()));
 
-  app.get('/api/worker/material-image-sync',auth('WORKER'),(req,res)=>res.json({...imageSyncState(),materials:staticCatalog().materials.filter(item=>!item.image_data)}));
+  app.get('/api/worker/material-image-sync',auth('WORKER'),(req,res)=>res.json({...imageSyncState(),materials:staticCatalog().materials.filter(item=>!item.image_data&&!item.image_path)}));
   app.post('/api/worker/material-image-sync/start',auth('WORKER'),(req,res)=>{
     const requestId=String(req.body&&req.body.request_id||'');
     const state=imageSyncState();
@@ -172,6 +175,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       if(Number.isSafeInteger(row.material_unit)&&row.material_unit>0) target.material_unit=row.material_unit;
       if(typeof row.specification==='string') target.specification=row.specification;
       target.visible=row.visible!==false;
+      if(typeof row.image_path==='string'&&row.image_path) target.image_path=row.image_path; else delete target.image_path;
       if(typeof row.image_data==='string'&&row.image_data) target.image_data=row.image_data; else delete target.image_data;
     }
     ensure();res.json({ok:true,managers:catalog.managers.length,materials:catalog.materials.length});
