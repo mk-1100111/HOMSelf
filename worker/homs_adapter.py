@@ -16,6 +16,18 @@ def parse_stock(value):
     return int(value.replace(',', ''))
 
 
+def parse_inventory_stock(value):
+    """10(1,000) 형태는 괄호 안 수량을 실제 재고로 사용한다."""
+    value = str(value).strip()
+    match = re.search(r'\(([\d,]+)\)', value)
+    if match:
+        return parse_stock(match.group(1))
+    match = re.search(r'[\d,]+', value)
+    if not match:
+        raise RuntimeError('현재재고 표시를 해석할 수 없습니다: ' + value)
+    return parse_stock(match.group(0))
+
+
 def validate_profile(p):
     required = [
         'stock_url', 'stock_search_css', 'stock_query_xpath', 'stock_checkbox_xpath',
@@ -123,11 +135,7 @@ class HomsAdapter:
         )
         with urlopen(request, timeout=15) as response:
             final_url = response.geturl()
-            return {
-                'ok': 200 <= response.status < 400,
-                'status': response.status,
-                'url': final_url
-            }
+            return {'ok': 200 <= response.status < 400,'status': response.status,'url': final_url}
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
@@ -153,6 +161,86 @@ class HomsAdapter:
             raise RuntimeError('HOMS 재고조회 화면을 확인할 수 없습니다. '
                                f'현재 URL: {current} / 선택자: {self.p["stock_search_css"]}') from error
 
+    def _select_visible(self, xpath, wanted):
+        from selenium.webdriver.support.ui import Select
+        element = self.unique(xpath, True)
+        select = Select(element)
+        try:
+            select.select_by_visible_text(wanted)
+        except Exception:
+            option = next((o for o in select.options if wanted in (o.text or '').strip()), None)
+            if not option:
+                raise RuntimeError('선택값을 찾지 못했습니다: ' + wanted)
+            select.select_by_value(option.get_attribute('value'))
+        selected = (select.first_selected_option.text or '').strip()
+        if wanted not in selected:
+            raise RuntimeError('선택값 적용 실패: ' + wanted + ' / 현재값: ' + selected)
+
+    @staticmethod
+    def _parse_material_cell(text):
+        lines=[line.strip() for line in str(text).splitlines() if line.strip()]
+        if not lines:
+            raise RuntimeError('상품코드/상품명/규격 셀이 비어 있습니다.')
+        def clean_label(value):
+            return re.sub(r'^(상품코드|상품명|규격)\s*[:：]?\s*','',value).strip()
+        lines=[clean_label(line) for line in lines if clean_label(line)]
+        if len(lines)>=2:
+            code=lines[0]
+            name=lines[1]
+            specification=' / '.join(lines[2:])
+        else:
+            match=re.search(r'([A-Za-z0-9_-]{4,80})', lines[0])
+            if not match:
+                raise RuntimeError('상품코드를 해석할 수 없습니다: ' + lines[0])
+            code=match.group(1)
+            remainder=(lines[0][:match.start()]+lines[0][match.end():]).strip(' /|-')
+            name=remainder or code
+            specification=''
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}',code):
+            match=re.search(r'([A-Za-z0-9_-]{4,80})',code)
+            if not match:
+                raise RuntimeError('상품코드 형식이 잘못됐습니다: ' + code)
+            code=match.group(1)
+        return code,name,specification
+
+    def sync_inventory(self):
+        """HOMS 전체 재고를 읽어 서버 동기화용 목록으로 반환한다."""
+        from selenium.webdriver.support.ui import WebDriverWait
+        self.show_homs()
+        self.driver.get(self.p['stock_url'])
+        self.unique(self.p['stock_search_css'])
+
+        self._select_visible('//*[@id="srcDisplayYn"]','전체')
+        self._select_visible('//*[@id="frm"]/div[2]/div[2]/select','90개씩보기')
+        self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
+        self.unique('//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]',True)
+
+        rows = WebDriverWait(self.driver, 20).until(
+            lambda _: [r for r in self.driver.find_elements(self.By.XPATH,'//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr') if r.is_displayed()]
+        )
+        result=[]
+        seen=set()
+        for row in rows:
+            cells=row.find_elements(self.By.TAG_NAME,'td')
+            if len(cells)<4:
+                continue
+            stock_nodes=row.find_elements(self.By.CSS_SELECTOR,'[id^="stockCell_"]')
+            if not stock_nodes:
+                continue
+            code,name,specification=self._parse_material_cell(cells[3].text)
+            if code in seen:
+                raise RuntimeError('재고조회 결과에 상품코드가 중복됐습니다: '+code)
+            seen.add(code)
+            result.append({
+                'material_code':code,
+                'material_name':name,
+                'specification':specification,
+                'stock_quantity':parse_inventory_stock(self.value(stock_nodes[0]))
+            })
+        if not result:
+            raise RuntimeError('HOMS 재고조회 결과를 한 건도 읽지 못했습니다.')
+        return result
+
     def fill(self, selector, value):
         from selenium.webdriver.common.keys import Keys
         e = self.unique(selector)
@@ -174,7 +262,6 @@ class HomsAdapter:
         self.fill(self.p['stock_search_css'], item['material_code'])
         self.unique(self.p['stock_query_xpath'], True).click()
 
-        # 조회 결과 체크박스가 3초 안에 없으면 해당 건은 미불출 스킵 대상으로 본다.
         try:
             checkbox = WebDriverWait(self.driver, 3).until(
                 lambda _: next((e for e in self.driver.find_elements(self.By.XPATH, self.p['stock_checkbox_xpath'])
