@@ -1,5 +1,6 @@
 """Automatic HOMS UI adapter for the company PC browser workspace."""
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -176,6 +177,37 @@ class HomsAdapter:
         if wanted not in selected:
             raise RuntimeError('선택값 적용 실패: ' + wanted + ' / 현재값: ' + selected)
 
+    def _select_page_size_90(self):
+        """HOMS 표시건수를 option[3](90개씩보기)로 선택하고 실제 선택 상태까지 검증한다."""
+        from selenium.webdriver.support.ui import Select
+        from selenium.common.exceptions import StaleElementReferenceException
+        select_xpath='//*[@id="frm"]/div[2]/div[2]/select'
+        option_xpath='//*[@id="frm"]/div[2]/div[2]/select/option[3]'
+        last=''
+        for attempt in range(8):
+            try:
+                option=self.unique(option_xpath,True)
+                value=option.get_attribute('value')
+                text=(option.text or '').strip()
+                if '90' not in text:
+                    raise RuntimeError('option[3]이 90개씩보기가 아닙니다: '+text)
+                select=Select(self.unique(select_xpath,True))
+                if value:
+                    select.select_by_value(value)
+                else:
+                    select.select_by_index(2)
+                time.sleep(0.35)
+                current=Select(self.unique(select_xpath,True))
+                last=(current.first_selected_option.text or '').strip()
+                if '90' in last:
+                    print('재고조회 표시건수 확인:',last,flush=True)
+                    return
+            except StaleElementReferenceException:
+                pass
+            if attempt < 7:
+                time.sleep(0.5)
+        raise RuntimeError('90개씩보기 적용 실패 / 현재값: '+(last or '확인 불가'))
+
     @staticmethod
     def _parse_material_cell(text):
         lines=[line.strip() for line in str(text).splitlines() if line.strip()]
@@ -206,28 +238,52 @@ class HomsAdapter:
     def sync_inventory(self):
         """HOMS 전체 재고를 읽어 서버 동기화용 목록으로 반환한다."""
         from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support.ui import Select
         self.show_homs()
         self.driver.get(self.p['stock_url'])
         self.unique(self.p['stock_search_css'])
 
         self._select_visible('//*[@id="srcDisplayYn"]','전체')
-        self._select_visible('//*[@id="frm"]/div[2]/div[2]/select','90개씩보기')
+        time.sleep(0.8)
+        self._select_page_size_90()
+        page_size=(Select(self.unique('//*[@id="frm"]/div[2]/div[2]/select',True)).first_selected_option.text or '').strip()
+        if '90' not in page_size:
+            raise RuntimeError('조회 직전 표시건수가 90개가 아닙니다: '+page_size)
+
         self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
         self.unique('//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]',True)
 
-        rows = WebDriverWait(self.driver, 20).until(
-            lambda _: [r for r in self.driver.find_elements(self.By.XPATH,'//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr') if r.is_displayed()]
+        rows_xpath='//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr'
+        WebDriverWait(self.driver,20).until(
+            lambda _: self.driver.execute_script(
+                "return document.evaluate(arguments[0],document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null).snapshotLength;",
+                rows_xpath
+            ) > 0
         )
+        time.sleep(0.5)
+
+        raw_rows=self.driver.execute_script("""
+            const xp=arguments[0];
+            const snap=document.evaluate(xp,document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+            const out=[];
+            for(let i=0;i<snap.snapshotLength;i++){
+              const row=snap.snapshotItem(i);
+              const cells=row.querySelectorAll('td');
+              if(cells.length<4) continue;
+              const stock=row.querySelector('[id^="stockCell_"]');
+              if(!stock) continue;
+              out.push({
+                material_text:(cells[3].innerText||'').trim(),
+                stock_text:((stock.value||stock.innerText||'')+'').trim()
+              });
+            }
+            return out;
+        """,rows_xpath)
+
         result=[]
         seen=set()
-        for row in rows:
-            cells=row.find_elements(self.By.TAG_NAME,'td')
-            if len(cells)<4:
-                continue
-            stock_nodes=row.find_elements(self.By.CSS_SELECTOR,'[id^="stockCell_"]')
-            if not stock_nodes:
-                continue
-            code,name,specification=self._parse_material_cell(cells[3].text)
+        for raw in raw_rows:
+            code,name,specification=self._parse_material_cell(raw.get('material_text',''))
             if code in seen:
                 raise RuntimeError('재고조회 결과에 상품코드가 중복됐습니다: '+code)
             seen.add(code)
@@ -235,7 +291,7 @@ class HomsAdapter:
                 'material_code':code,
                 'material_name':name,
                 'specification':specification,
-                'stock_quantity':parse_inventory_stock(self.value(stock_nodes[0]))
+                'stock_quantity':parse_inventory_stock(raw.get('stock_text',''))
             })
         if not result:
             raise RuntimeError('HOMS 재고조회 결과를 한 건도 읽지 못했습니다.')
