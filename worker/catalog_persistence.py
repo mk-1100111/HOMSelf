@@ -1,121 +1,118 @@
 """Persist HOMSelf static catalog metadata to the authorized private HOMSelf-data repository.
 
-Stock quantities are intentionally excluded. Manager/material visibility, images and
-material units are long-lived catalog data; runtime HOMS stock stays on the server.
+Stock quantities are intentionally excluded. Images crawled by homs_catalog_crawler.py
+are stored in HOMSelf/public/static/img/material_list and are not duplicated here.
 """
 import base64
-import copy
 import json
 import os
 from urllib.parse import quote
-from common import http, HTTPFailure
+from common import http
 
 ALLOWED_REPOSITORY='mk-1100111/HOMSelf-data'
 CATALOG_PATH='config/catalog.json'
-MATERIAL_IMAGE_DIR='images/materials'
 
 
 def _settings(cfg):
-    repository=cfg.get('backup_repository');branch=cfg.get('backup_branch','main')
-    if repository!=ALLOWED_REPOSITORY:raise RuntimeError('영구 부자재 저장소는 mk-1100111/HOMSelf-data만 허용합니다.')
+    repository=cfg.get('backup_repository')
+    branch=cfg.get('backup_branch','main')
+    if repository!=ALLOWED_REPOSITORY:
+        raise RuntimeError('영구 부자재 저장소는 mk-1100111/HOMSelf-data만 허용합니다.')
     token=os.environ.get('HOMSELF_BACKUP_GITHUB_TOKEN','')
-    if not token:raise RuntimeError('HOMSELF_BACKUP_GITHUB_TOKEN 환경변수가 필요합니다.')
+    if not token:
+        raise RuntimeError('HOMSELF_BACKUP_GITHUB_TOKEN 환경변수가 필요합니다.')
     return repository,branch,token
 
-def _repo_base(repository):return 'https://api.github.com/repos/'+repository
 
-def _contents_url(repository,path,branch=None):
-    url=_repo_base(repository)+'/contents/'+quote(path)
-    if branch:url+='?ref='+quote(branch)
-    return url
+def _repo_base(repository):
+    return 'https://api.github.com/repos/'+repository
+
 
 def load_catalog(cfg):
-    repository,branch,token=_settings(cfg);base=_repo_base(repository);metadata=http(base,token)
-    if metadata.get('private') is not True or metadata.get('full_name')!=repository:raise RuntimeError('비공개 HOMSelf-data 저장소를 확인하지 못했습니다.')
-    result=http(_contents_url(repository,CATALOG_PATH,branch),token);encoded=result.get('content','').replace('\n','')
-    if result.get('encoding')!='base64' or not encoded:raise RuntimeError('HOMSelf-data catalog.json을 읽지 못했습니다.')
-    try:catalog=json.loads(base64.b64decode(encoded).decode('utf-8'))
-    except Exception as error:raise RuntimeError('HOMSelf-data catalog.json 형식이 잘못됐습니다.') from error
-    if not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):raise RuntimeError('HOMSelf-data catalog.json 구조가 잘못됐습니다.')
-    if not isinstance(catalog.get('manager_settings'),dict):catalog['manager_settings']={}
-    for name in catalog['managers']:catalog['manager_settings'].setdefault(name,{'visible':True})
+    repository,branch,token=_settings(cfg)
+    base=_repo_base(repository)
+    metadata=http(base,token)
+    if metadata.get('private') is not True or metadata.get('full_name')!=repository:
+        raise RuntimeError('비공개 HOMSelf-data 저장소를 확인하지 못했습니다.')
+    result=http(base+'/contents/'+quote(CATALOG_PATH)+'?ref='+quote(branch),token)
+    encoded=result.get('content','').replace('\n','')
+    if result.get('encoding')!='base64' or not encoded:
+        raise RuntimeError('HOMSelf-data catalog.json을 읽지 못했습니다.')
+    try:
+        catalog=json.loads(base64.b64decode(encoded).decode('utf-8'))
+    except Exception as error:
+        raise RuntimeError('HOMSelf-data catalog.json 형식이 잘못됐습니다.') from error
+    if not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):
+        raise RuntimeError('HOMSelf-data catalog.json 구조가 잘못됐습니다.')
+    if not isinstance(catalog.get('manager_settings'),dict):
+        catalog['manager_settings']={}
+    for name in catalog['managers']:
+        catalog['manager_settings'].setdefault(name,{'visible':True})
     for item in catalog['materials']:
-        if isinstance(item,dict) and 'visible' not in item:item['visible']=True
+        if isinstance(item,dict) and 'visible' not in item:
+            item['visible']=True
     return catalog,result.get('sha'),repository,branch,token
 
+
 def merge_inventory(catalog,inventory_rows):
-    materials=catalog['materials'];known={str(item.get('material_code')) for item in materials if isinstance(item,dict)};added=[]
+    materials=catalog['materials']
+    by_code={str(item.get('material_code')):item for item in materials if isinstance(item,dict)}
+    added=[]
     for row in inventory_rows:
         code=str(row.get('material_code','')).strip()
-        if not code or code in known:continue
-        item={'material_code':code,'material_name':str(row.get('material_name') or code).strip(),'material_unit':1,'visible':True};specification=str(row.get('specification') or '').strip()
+        if not code:
+            continue
+        name=str(row.get('material_name') or code).strip()
+        specification=str(row.get('specification') or '').strip()
+        item=by_code.get(code)
+        if item is None:
+            item={'material_code':code,'material_name':name,'material_unit':1,'visible':True}
+            if specification:item['specification']=specification
+            materials.append(item);by_code[code]=item;added.append(item)
+            continue
+        item['material_name']=name
         if specification:item['specification']=specification
-        materials.append(item);known.add(code);added.append(item)
+        else:item.pop('specification',None)
     return added
 
+
 def save_catalog(cfg,catalog,sha,repository=None,branch=None,token=None,message='Update HOMSelf catalog'):
-    if repository is None or branch is None or token is None:repository,branch,token=_settings(cfg)
+    if repository is None or branch is None or token is None:
+        repository,branch,token=_settings(cfg)
+    base=_repo_base(repository)
     body={'message':message,'branch':branch,'content':base64.b64encode((json.dumps(catalog,ensure_ascii=False,indent=2)+'\n').encode('utf-8')).decode('ascii')}
     if sha:body['sha']=sha
-    return http(_contents_url(repository,CATALOG_PATH),token,'PUT',body)
+    return http(base+'/contents/'+quote(CATALOG_PATH),token,'PUT',body)
 
-def save_material_image(cfg,material_code,image_bytes,extension='png'):
-    repository,branch,token=_settings(cfg);code=str(material_code).strip()
-    if not code or any(ch not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for ch in code):raise RuntimeError('이미지 저장 상품코드 형식이 잘못됐습니다.')
-    if not isinstance(image_bytes,(bytes,bytearray)) or not image_bytes:raise RuntimeError('저장할 이미지 데이터가 없습니다.')
-    ext='jpg' if extension.lower() in ('jpg','jpeg') else 'png';path=f'{MATERIAL_IMAGE_DIR}/{code}.{ext}';sha=None
-    try:sha=http(_contents_url(repository,path,branch),token).get('sha')
-    except HTTPFailure as error:
-        if error.status!=404:raise
-    body={'message':f'Update HOMSelf material image {code}','branch':branch,'content':base64.b64encode(bytes(image_bytes)).decode('ascii')}
-    if sha:body['sha']=sha
-    result=http(_contents_url(repository,path),token,'PUT',body)
-    return path,result.get('commit',{}).get('sha','')
-
-def load_repo_file_bytes(cfg,path):
-    repository,branch,token=_settings(cfg);result=http(_contents_url(repository,path,branch),token);encoded=result.get('content','').replace('\n','')
-    if result.get('encoding')!='base64' or not encoded:raise RuntimeError('GitHub 이미지 파일을 읽지 못했습니다: '+path)
-    return base64.b64decode(encoded)
 
 def persist_inventory_catalog(cfg,inventory_rows):
-    catalog,sha,repository,branch,token=load_catalog(cfg);added=merge_inventory(catalog,inventory_rows)
-    if added:
-        result=save_catalog(cfg,catalog,sha,repository,branch,token,'Add HOMSelf materials from HOMS sync');print('신규 부자재 GitHub 영구 저장:',len(added),'건',result.get('commit',{}).get('sha',''),flush=True)
-    else:print('신규 부자재 없음: GitHub catalog 변경 없음',flush=True)
+    catalog,sha,repository,branch,token=load_catalog(cfg)
+    before=json.dumps(catalog.get('materials',[]),ensure_ascii=False,sort_keys=True)
+    added=merge_inventory(catalog,inventory_rows)
+    after=json.dumps(catalog.get('materials',[]),ensure_ascii=False,sort_keys=True)
+    if before!=after:
+        result=save_catalog(cfg,catalog,sha,repository,branch,token,'Sync HOMSelf material metadata from HOMS')
+        commit=result.get('commit',{}).get('sha','')
+        print('부자재 GitHub 영구 catalog 갱신:',len(catalog.get('materials',[])),'건',commit,flush=True)
+    else:
+        print('부자재 기준정보 변경 없음: GitHub catalog 변경 없음',flush=True)
     return catalog,added
 
-def persist_admin_catalog(cfg,incoming):
-    if not isinstance(incoming,dict) or not isinstance(incoming.get('managers'),list) or not isinstance(incoming.get('materials'),list):raise RuntimeError('관리자 catalog 저장 데이터가 잘못됐습니다.')
-    catalog,sha,repository,branch,token=load_catalog(cfg);catalog['managers']=list(incoming['managers']);catalog['manager_settings']=copy.deepcopy(incoming.get('manager_settings') or {});old_by_code={str(x.get('material_code')):x for x in catalog.get('materials',[]) if isinstance(x,dict)};merged=[]
-    for row in incoming['materials']:
-        item=copy.deepcopy(row);code=str(item.get('material_code',''));old=old_by_code.get(code) or {}
-        if item.get('image_path'):item.pop('image_data',None)
-        elif old.get('image_path') and item.get('image_data'):item.pop('image_path',None)
-        elif old.get('image_path') and not item.get('image_data'):item['image_path']=old['image_path']
-        merged.append(item)
-    catalog['materials']=merged;result=save_catalog(cfg,catalog,sha,repository,branch,token,'Update HOMSelf admin catalog settings');return result.get('commit',{}).get('sha','')
 
-def push_catalog_to_server(api,catalog):return api.post('catalog-sync',{'catalog':catalog})
+def persist_admin_catalog(cfg,catalog):
+    if not isinstance(catalog,dict) or not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):
+        raise RuntimeError('관리자 catalog 저장 데이터가 잘못됐습니다.')
+    _,sha,repository,branch,token=load_catalog(cfg)
+    result=save_catalog(cfg,catalog,sha,repository,branch,token,'Update HOMSelf admin catalog settings')
+    return result.get('commit',{}).get('sha','')
 
-def _image_data_from_bytes(path,raw):
-    mime='image/jpeg' if str(path).lower().endswith(('.jpg','.jpeg')) else 'image/png'
-    return 'data:'+mime+';base64,'+base64.b64encode(raw).decode('ascii')
+
+def push_catalog_to_server(api,catalog):
+    return api.post('catalog-sync',{'catalog':catalog})
+
 
 def restore_persistent_catalog(api,cfg):
     catalog,_,_,_,_=load_catalog(cfg)
-    base_catalog=copy.deepcopy(catalog)
-    for item in base_catalog.get('materials',[]):
-        if item.get('image_path'):item.pop('image_data',None)
-    result=push_catalog_to_server(api,base_catalog)
-    restored_images=0
-    for item in catalog.get('materials',[]):
-        code=str(item.get('material_code','')).strip();path=item.get('image_path');data=item.get('image_data')
-        try:
-            if path:
-                raw=load_repo_file_bytes(cfg,path);data=_image_data_from_bytes(path,raw)
-            if code and data:
-                api.post('catalog-image-apply',{'material_code':code,'image_path':path or '','image_data':data});restored_images+=1
-        except Exception as error:
-            print('GitHub 부자재 이미지 복원 실패:',code,type(error).__name__,str(error),flush=True)
-    print('GitHub 영구 부자재 catalog 서버 반영:',result.get('materials',result.get('count',len(catalog.get('materials',[])))),'건 / 이미지',restored_images,'건',flush=True)
+    result=push_catalog_to_server(api,catalog)
+    print('GitHub 영구 부자재 catalog 서버 반영:',result.get('materials',result.get('count',len(catalog.get('materials',[])))),'건',flush=True)
     return catalog
