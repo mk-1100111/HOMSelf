@@ -96,6 +96,25 @@ def recover_interrupted(api):
     print('이전 중단 건을 확인 필요로 전환:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
     return 1
 
+def execute_inventory_sync(api, adapter, sync_state):
+    request_id=sync_state.get('request_id')
+    if not request_id:
+        raise RuntimeError('재고 동기화 요청번호가 없습니다.')
+    print('재고 동기화 시작: HOMS 전체 / 90개씩보기',flush=True)
+    try:
+        rows=adapter.sync_inventory()
+        result=api.post('inventory-sync',{'request_id':request_id,'items':rows})
+        print('재고 동기화 완료:',result.get('count',len(rows)),'건',flush=True)
+    except BaseException as error:
+        try:
+            api.post('inventory-sync/fail',{'request_id':request_id,'error':f'{type(error).__name__}: {error}'})
+        except Exception:
+            pass
+        print('재고 동기화 실패:',type(error).__name__,str(error),flush=True)
+    finally:
+        try: adapter.show_admin(refresh=False)
+        except Exception: pass
+
 def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
     previous=None
     last_keepalive=0.0
@@ -109,7 +128,10 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             sleep(min(30,poll_seconds*2));continue
         if state.get('worker_protocol')!=3:
             raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
-        if state.get('blocked'):
+        sync_state=state.get('inventory_sync') or {}
+        if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):
+            mode='재고 동기화 요청 처리 중'
+        elif state.get('blocked'):
             mode='다른 처리기 작업 중'
         elif state.get('batch_active'):
             mode='일괄 불출 진행 중 / 남은 '+str(state.get('batch_remaining',0))+'건'
@@ -117,6 +139,13 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
             mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:
             print(mode,flush=True);previous=mode
+
+        if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):
+            execute_inventory_sync(api,adapter,sync_state)
+            previous=None
+            if once:return
+            sleep(poll_seconds)
+            continue
 
         now=time.monotonic()
         if not state.get('batch_active') and not state.get('blocked') and now-last_keepalive>=60:
@@ -193,8 +222,8 @@ def main():
             admin_url=cfg['server_url'].rstrip('/') + '/admin'
             adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile')
             recover_interrupted(api)
-            print('일괄 불출 감시 시작. 종료: Ctrl+C',flush=True)
-            print('사용 순서: HOMS 로그인 -> 요청별 승인 -> 관리자 화면에서 승인건 일괄 불출',flush=True)
+            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True)
+            print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True)
             run_loop(api,adapter,journal,interval,once=args.once)
         finally:
             journal.db.close()
