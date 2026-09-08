@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timezone
 from common import ROOT, API, config, ConnectionFailure, HTTPFailure
 
+KEEPALIVE_SECONDS=30*60
+
 class Journal:
     def __init__(self, file):
         self.db = sqlite3.connect(file)
@@ -101,7 +103,7 @@ def execute_inventory_sync(api, adapter, sync_state, cfg):
 
 def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
     previous=None
-    last_keepalive=0.0
+    last_keepalive=time.monotonic()
     last_server_boot_id=None
     pending_server_restore=False
     last_restore_attempt=0.0
@@ -116,12 +118,9 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
 
         server_boot_id=state.get('server_boot_id')
         if server_boot_id:
-            if last_server_boot_id is None:
-                last_server_boot_id=server_boot_id
+            if last_server_boot_id is None:last_server_boot_id=server_boot_id
             elif server_boot_id!=last_server_boot_id:
-                last_server_boot_id=server_boot_id
-                pending_server_restore=True
-                last_restore_attempt=0.0
+                last_server_boot_id=server_boot_id;pending_server_restore=True;last_restore_attempt=0.0
                 print('Render 서버 재시작 감지: GitHub 영구 catalog 자동 복원 대기',flush=True)
 
         sync_state=state.get('inventory_sync') or {}
@@ -131,14 +130,11 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
         else:mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:print(mode,flush=True);previous=mode
 
-        now=time.monotonic()
-        idle=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
+        now=time.monotonic();idle=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
         if pending_server_restore and idle and now-last_restore_attempt>=60:
             last_restore_attempt=now
             if restore_catalog(api,cfg):
-                pending_server_restore=False
-                print('Render 재시작 후 GitHub 영구 catalog 자동 복원 완료',flush=True)
-                previous=None
+                pending_server_restore=False;print('Render 재시작 후 GitHub 영구 catalog 자동 복원 완료',flush=True);previous=None
                 if once:return
                 sleep(poll_seconds);continue
             print('GitHub catalog 자동 복원 재시도는 60초 후 진행합니다.',flush=True)
@@ -149,8 +145,7 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
                     previous=None
                     if once:return
                     sleep(poll_seconds);continue
-            except Exception as error:
-                print('관리자 catalog GitHub 영구 저장 실패:',type(error).__name__,str(error),flush=True)
+            except Exception as error:print('관리자 catalog GitHub 영구 저장 실패:',type(error).__name__,str(error),flush=True)
 
         if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):
             execute_inventory_sync(api,adapter,sync_state,cfg);previous=None
@@ -158,7 +153,7 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
             sleep(poll_seconds);continue
 
         now=time.monotonic()
-        if not state.get('batch_active') and not state.get('blocked') and now-last_keepalive>=60:
+        if idle and now-last_keepalive>=KEEPALIVE_SECONDS:
             try:adapter.keep_alive()
             except Exception as error:print('HOMS 세션 유지 요청 실패:',type(error).__name__,flush=True)
             finally:last_keepalive=now
@@ -205,7 +200,7 @@ def main():
             if args.reconcile:reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
-            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
+            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
             if adapter:adapter.close()
