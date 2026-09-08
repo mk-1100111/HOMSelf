@@ -4,6 +4,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+class MissingStockResult(RuntimeError):
+    """HOMS 조회 결과에 출고 대상 체크박스가 없는 경우."""
+
+
 def parse_stock(value):
     value = str(value).strip()
     if not re.fullmatch(r'\d+|\d{1,3}(?:,\d{3})+', value):
@@ -48,7 +52,6 @@ class HomsAdapter:
             profile_path = Path(profile_dir).resolve()
             profile_path.mkdir(parents=True, exist_ok=True)
             options.add_argument('--user-data-dir=' + str(profile_path))
-        # Chrome의 "자동화된 테스트 소프트웨어에 의해 제어" 안내를 가능한 범위에서 숨긴다.
         options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
         options.add_experimental_option('useAutomationExtension', False)
 
@@ -58,7 +61,6 @@ class HomsAdapter:
         self._open_workspace()
 
     def _open_workspace(self):
-        """한 Chrome 창에 관리자 탭과 HOMS 탭을 준비한다."""
         if self.admin_url:
             self.driver.get(self.admin_url)
             self.admin_handle = self.driver.current_window_handle
@@ -89,7 +91,6 @@ class HomsAdapter:
             self.driver.refresh()
 
     def keep_alive(self):
-        """유휴 상태에서 HOMS 쿠키를 사용하는 비파괴 GET을 보내 세션 활동을 유지한다."""
         original = None
         try:
             original = self.driver.current_window_handle
@@ -97,37 +98,30 @@ class HomsAdapter:
             pass
         try:
             self._switch_or_reopen('homs_handle', self.p['stock_url'])
-            result = self.driver.execute_async_script(
+            return self.driver.execute_async_script(
                 """
                 const done = arguments[arguments.length - 1];
                 fetch(arguments[0], {
-                    method: 'GET',
-                    credentials: 'include',
-                    cache: 'no-store',
+                    method: 'GET', credentials: 'include', cache: 'no-store',
                     headers: {'X-HOMSelf-KeepAlive': '1'}
                 }).then(r => done({ok:r.ok,status:r.status,url:r.url}))
                   .catch(e => done({ok:false,error:String(e)}));
                 """,
                 self.p['stock_url']
             )
-            return result
         finally:
             if original and original in self.driver.window_handles:
-                try:
-                    self.driver.switch_to.window(original)
-                except Exception:
-                    pass
+                try:self.driver.switch_to.window(original)
+                except Exception:pass
 
     def unique(self, selector, xpath=False, visible=True, root=None):
         by = self.By.XPATH if xpath else self.By.CSS_SELECTOR
-
         def find(_):
             nodes = (root or self.driver).find_elements(by, selector)
             nodes = [e for e in nodes if not visible or e.is_displayed()]
             if len(nodes) > 1:
                 raise RuntimeError('동일 선택자 요소가 여러 개입니다. 중단: ' + selector)
             return nodes[0] if nodes and (not visible or nodes[0].is_enabled()) else False
-
         return self.wait.until(find)
 
     @staticmethod
@@ -135,63 +129,55 @@ class HomsAdapter:
         return (e.get_attribute('value') or e.text or '').strip()
 
     def ensure_session(self):
-        """HOMS가 로그인된 상태라고 가정하고 재고조회 화면만 확인한다."""
         self.show_homs()
         self.driver.get(self.p['stock_url'])
         try:
             self.unique(self.p['stock_search_css'])
         except Exception as error:
             current = self.driver.current_url
-            raise RuntimeError(
-                'HOMS 재고조회 화면을 확인할 수 없습니다. '
-                f'현재 URL: {current} / 선택자: {self.p["stock_search_css"]}'
-            ) from error
+            raise RuntimeError('HOMS 재고조회 화면을 확인할 수 없습니다. '
+                               f'현재 URL: {current} / 선택자: {self.p["stock_search_css"]}') from error
 
     def fill(self, selector, value):
         from selenium.webdriver.common.keys import Keys
         e = self.unique(selector)
         if e.get_attribute('readonly') or e.get_attribute('disabled'):
             raise RuntimeError('입력칸이 잠겨 있습니다. 강제 해제하지 않습니다.')
-        e.clear()
-        e.send_keys(str(value))
-        e.send_keys(Keys.TAB)
+        e.clear();e.send_keys(str(value));e.send_keys(Keys.TAB)
         if self.value(self.unique(selector)) != str(value):
             raise RuntimeError('입력 값 검증 실패: ' + selector)
 
     def prepare(self, item):
         from selenium.webdriver.common.keys import Keys
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.common.exceptions import TimeoutException
         self.ui_completed = False
         self.prepared_item_id = None
         self.show_homs()
         self.driver.get(self.p['stock_url'])
 
-        # 1) 상품코드 입력 -> 조회
         self.fill(self.p['stock_search_css'], item['material_code'])
         self.unique(self.p['stock_query_xpath'], True).click()
 
-        # 2) 상품코드 조회 결과 한 건(check_0) 선택
-        checkbox = self.unique(self.p['stock_checkbox_xpath'], True)
+        # 조회 결과 체크박스가 3초 안에 없으면 해당 건은 미불출 스킵 대상으로 본다.
+        try:
+            checkbox = WebDriverWait(self.driver, 3).until(
+                lambda _: next((e for e in self.driver.find_elements(self.By.XPATH, self.p['stock_checkbox_xpath'])
+                                if e.is_displayed() and e.is_enabled()), False)
+            )
+        except TimeoutException as error:
+            raise MissingStockResult(f'HOMS 조회 결과 없음: {item["material_code"]}') from error
+
         row = checkbox.find_element(self.By.XPATH, './ancestor::tr[1]')
         if item['material_code'] not in (row.text or ''):
             raise RuntimeError('조회 결과가 요청 상품코드와 일치하지 않습니다.')
-        if not checkbox.is_selected():
-            checkbox.click()
-        if not checkbox.is_selected():
-            raise RuntimeError('조회 상품을 선택하지 못했습니다.')
+        if not checkbox.is_selected():checkbox.click()
+        if not checkbox.is_selected():raise RuntimeError('조회 상품을 선택하지 못했습니다.')
 
-        # 3) 자재별출고 팝업
         self.unique(self.p['release_open_xpath'], True).click()
-
-        # 4) 작업자 이름 입력 후 Enter 확정
         receiver = self.unique(self.p['receiver_search_css'])
-        receiver.clear()
-        receiver.send_keys(item['manager_name'])
-        receiver.send_keys(Keys.ENTER)
-        self.wait.until(
-            lambda _: self.value(self.unique(self.p['receiver_search_css'], visible=False)) == item['manager_name']
-        )
-
-        # 5) 승인 수량 입력
+        receiver.clear();receiver.send_keys(item['manager_name']);receiver.send_keys(Keys.ENTER)
+        self.wait.until(lambda _: self.value(self.unique(self.p['receiver_search_css'], visible=False)) == item['manager_name'])
         self.fill(self.p['quantity_css'], item['quantity'])
         self.prepared_item_id = item['id']
         self.verify(item)
@@ -201,42 +187,29 @@ class HomsAdapter:
             raise RuntimeError('현재 불출 화면이 요청 항목과 연결되어 있지 않습니다.')
         receiver = self.value(self.unique(self.p['receiver_search_css'], visible=False))
         quantity = self.value(self.unique(self.p['quantity_css'], visible=False))
-        if receiver != item['manager_name']:
-            raise RuntimeError('불출 직전 작업자 이름 대조 실패.')
-        if quantity != str(item['quantity']):
-            raise RuntimeError('불출 직전 수량 대조 실패.')
+        if receiver != item['manager_name']:raise RuntimeError('불출 직전 작업자 이름 대조 실패.')
+        if quantity != str(item['quantity']):raise RuntimeError('불출 직전 수량 대조 실패.')
 
     def submit_once(self, item):
         from selenium.webdriver.support import expected_conditions as EC
         self.verify(item)
-
-        # 6) 출고 -> 확인 -> 완료 알림. 실제 출고 구간이므로 자동 재시도하지 않는다.
         self.unique(self.p['release_button_xpath'], True).click()
         self.unique(self.p['first_confirm_css']).click()
         self.unique(self.p['second_confirm_css']).click()
-
-        # 7) 완료 알림이 닫힌 후 작업자 입력창으로 복귀했는지 확인한다.
         self.wait.until(EC.invisibility_of_element_located((self.By.CSS_SELECTOR, self.p['second_confirm_css'])))
         receiver = self.unique(self.p['receiver_search_css'])
         if not receiver.is_displayed() or not receiver.is_enabled():
             raise RuntimeError('출고 완료 후 작업자 입력 화면으로 복귀하지 않았습니다.')
-
-        # 8) 자재별출고 팝업에서 취소를 눌러 재고조회 화면으로 복귀한다.
         close_xpath = self.p.get('release_close_xpath') or '//*[@id="stockSaveClose"]'
         self.unique(close_xpath, True).click()
         self.wait.until(EC.invisibility_of_element_located((self.By.CSS_SELECTOR, self.p['receiver_search_css'])))
         stock_search = self.unique(self.p['stock_search_css'])
         if not stock_search.is_displayed() or not stock_search.is_enabled():
             raise RuntimeError('출고 완료 후 재고조회 화면으로 복귀하지 않았습니다.')
-
         self.ui_completed = True
         self.prepared_item_id = None
-        return {
-            'source': 'homs-ui-return',
-            'manager_name': item['manager_name'],
-            'material_code': item['material_code'],
-            'quantity': item['quantity']
-        }
+        return {'source':'homs-ui-return','manager_name':item['manager_name'],
+                'material_code':item['material_code'],'quantity':item['quantity']}
 
     def close(self):
         self.driver.quit()
