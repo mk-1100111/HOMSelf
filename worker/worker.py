@@ -30,6 +30,7 @@ class Journal:
         self.db.commit()
 
 def execute_item(api, adapter, journal, item):
+    from homs_adapter import MissingStockResult
     route = 'items/' + item['id'] + '/'
     def update(action, note='', proof=None):
         return api.post(route+action, {'attempt_id':item['attempt_id'],'note':note,'proof':proof})
@@ -59,19 +60,27 @@ def execute_item(api, adapter, journal, item):
         update('complete',note=note)
         journal.record(item,'completed')
         print('자동 불출 완료:',item['id'],item['manager_name'],item['material_code'],item['quantity'],flush=True)
-        try: adapter.show_admin(refresh=True)
+        try: adapter.show_admin(refresh=False)
         except Exception: pass
+    except MissingStockResult:
+        # 상품 조회 후 체크박스가 없으면 실제 출고 단계 전이므로 안전하게 버리고 다음 건으로 진행한다.
+        note='HOMS 조회 결과 체크박스 없음 - 미불출 스킵: '+item['material_code']
+        update('skip_missing_result',note)
+        journal.record(item,'skipped_missing_result')
+        print('조회 결과 없음 - 건너뜀:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
+        try: adapter.show_admin(refresh=False)
+        except Exception: pass
+        return
     except BaseException as error:
         journal.record(item,'needs_review')
         note=f'자동 처리 중단: {stage} / {type(error).__name__}. HOMS 실제 불출내역 대조 필요.'
         try: update('review',note)
         except Exception: pass
-        try: adapter.show_admin(refresh=True)
+        try: adapter.show_admin(refresh=False)
         except Exception: pass
         raise
 
 def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
-    """Only items captured by the current admin-started batch may be claimed."""
     previous=None
     last_keepalive=0.0
     while not stop():
@@ -93,15 +102,11 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
         if mode!=previous:
             print(mode,flush=True);previous=mode
 
-        # HOMS 유휴 세션 유지: 배치/오류 작업이 없을 때만 60초마다 비파괴 GET을 보낸다.
         now=time.monotonic()
         if not state.get('batch_active') and not state.get('blocked') and now-last_keepalive>=60:
-            try:
-                adapter.keep_alive()
-            except Exception as error:
-                print('HOMS 세션 유지 요청 실패:',type(error).__name__,flush=True)
-            finally:
-                last_keepalive=now
+            try: adapter.keep_alive()
+            except Exception as error: print('HOMS 세션 유지 요청 실패:',type(error).__name__,flush=True)
+            finally: last_keepalive=now
 
         if state.get('batch_active') and not state.get('blocked') and state['items']:
             adapter.ensure_session()
@@ -117,7 +122,7 @@ def run_loop(api, adapter, journal, poll_seconds=5, once=False, sleep=time.sleep
         elif state.get('batch_active') and not state.get('blocked') and not state['items'] and state.get('batch_remaining',0)==0:
             api.post('batch/finish',{})
             print('일괄 불출 완료. 이후 승인 건은 다음 불출 시작까지 대기합니다.',flush=True)
-            try: adapter.show_admin(refresh=True)
+            try: adapter.show_admin(refresh=False)
             except Exception: pass
             previous=None
         if once:return
