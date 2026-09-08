@@ -1,6 +1,7 @@
 /* A lost response MUST retry the same key AND payload, never create a new request. */
 const pendingKey = 'homself.pending.v1';
 const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
+const kioskMaterialLabel = material => String(material && (material.display_name || material.material_name) || '').trim();
 
 if(typeof renderMaterialCard==='function'){
   const baseRenderMaterialCard=renderMaterialCard;
@@ -8,11 +9,31 @@ if(typeof renderMaterialCard==='function'){
     if(material.visible===false) return;
     if(Number.isFinite(material.available_stock)&&material.available_stock<=0) return;
     baseRenderMaterialCard(material);
-    if(material.image_data){
-      const last=document.getElementById('material-lists')?.lastElementChild;
-      const img=last?.querySelector('.material-image');
-      if(img) img.src=material.image_data;
-    }
+    const last=document.getElementById('material-lists')?.lastElementChild;
+    const label=kioskMaterialLabel(material);
+    const title=last?.querySelector('.card-title');
+    const img=last?.querySelector('.material-image');
+    if(title&&label)title.textContent=label;
+    if(img&&label)img.alt=label;
+    if(material.image_data&&img)img.src=material.image_data;
+  };
+}
+
+if(typeof updateCart==='function'){
+  const baseUpdateCart=updateCart;
+  updateCart=function(){
+    baseUpdateCart();
+    const names=Object.keys(cartQuantities||{});
+    const cartTexts=[...document.querySelectorAll('#cart-items .cart-text')];
+    const modalItems=[...document.querySelectorAll('#modal-cart-list > div')];
+    names.forEach((name,index)=>{
+      const material=material_list.find(item=>item.material_name===name);
+      if(!material)return;
+      const label=kioskMaterialLabel(material)||name;
+      const quantity=cartQuantities[name]*material.material_unit;
+      if(cartTexts[index])cartTexts[index].innerText=label+' x '+quantity;
+      if(modalItems[index])modalItems[index].innerText=label+' x '+quantity;
+    });
   };
 }
 
