@@ -11,27 +11,22 @@ from common import ROOT, API, config, ConnectionFailure, HTTPFailure
 KEEPALIVE_SECONDS=30*60
 
 class Journal:
-    def __init__(self, file):
-        self.db = sqlite3.connect(file)
+    def __init__(self,file):
+        self.db=sqlite3.connect(file)
         self.db.execute('PRAGMA synchronous=FULL')
         self.db.execute('CREATE TABLE IF NOT EXISTS attempts(item_id TEXT PRIMARY KEY, attempt_id TEXT, phase TEXT, updated_at TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS receipts(transaction_id TEXT PRIMARY KEY, item_id TEXT UNIQUE, evidence TEXT)')
         self.db.commit()
-    def record(self, item, phase):
-        self.db.execute('INSERT INTO attempts VALUES(?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET attempt_id=excluded.attempt_id, phase=excluded.phase, updated_at=excluded.updated_at',(item['id'],item['attempt_id'],phase,datetime.now(timezone.utc).isoformat()))
-        self.db.commit()
-    def exists(self, item):
-        return self.db.execute("SELECT phase FROM attempts WHERE item_id=? AND phase!='cleared_manual'",(item['id'],)).fetchone()
-    def save_proof(self, item, proof):
-        self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(proof['transaction_id'],item['id'],json.dumps(proof,ensure_ascii=False)));self.db.commit()
+    def record(self,item,phase):
+        self.db.execute('INSERT INTO attempts VALUES(?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET attempt_id=excluded.attempt_id, phase=excluded.phase, updated_at=excluded.updated_at',(item['id'],item['attempt_id'],phase,datetime.now(timezone.utc).isoformat()));self.db.commit()
+    def exists(self,item):return self.db.execute("SELECT phase FROM attempts WHERE item_id=? AND phase!='cleared_manual'",(item['id'],)).fetchone()
+    def save_proof(self,item,proof):self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(proof['transaction_id'],item['id'],json.dumps(proof,ensure_ascii=False)));self.db.commit()
 
-def execute_item(api, adapter, journal, item):
+def execute_item(api,adapter,journal,item):
     from homs_adapter import MissingStockResult
     route='items/'+item['id']+'/'
     def update(action,note='',proof=None):return api.post(route+action,{'attempt_id':item['attempt_id'],'note':note,'proof':proof})
-    if journal.exists(item):
-        update('review','동일 항목의 회사 PC 처리 기록이 이미 있습니다. 재불출 차단.')
-        raise RuntimeError('로컬 기록이 있는 항목입니다. HOMS 대조 없이 재처리할 수 없습니다.')
+    if journal.exists(item):update('review','동일 항목의 회사 PC 처리 기록이 이미 있습니다. 재불출 차단.');raise RuntimeError('로컬 기록이 있는 항목입니다. HOMS 대조 없이 재처리할 수 없습니다.')
     journal.record(item,'claimed');stage='prepare'
     try:
         adapter.prepare(item);adapter.verify(item);stage='begin';journal.record(item,'begin_requested');update('begin');journal.record(item,'submitting');stage='submit';result=adapter.submit_once(item);journal.record(item,'ui_confirmed');stage='complete'
@@ -74,12 +69,9 @@ def execute_catalog_persist(api,cfg):
     revision=state.get('revision');catalog=state.get('catalog')
     if not revision or not catalog:raise RuntimeError('관리자 catalog 저장 요청 데이터가 없습니다.')
     from catalog_persistence import persist_admin_catalog
-    commit=persist_admin_catalog(cfg,catalog)
-    api.post('catalog-persist/complete',{'revision':revision})
-    print('관리자 catalog GitHub 영구 저장 완료:',commit,flush=True)
-    return True
+    commit=persist_admin_catalog(cfg,catalog);api.post('catalog-persist/complete',{'revision':revision});print('관리자 catalog GitHub 영구 저장 완료:',commit,flush=True);return True
 
-def execute_inventory_sync(api, adapter, sync_state, cfg):
+def execute_inventory_sync(api,adapter,sync_state,cfg):
     request_id=sync_state.get('request_id')
     if not request_id:raise RuntimeError('재고 동기화 요청번호가 없습니다.')
     print('재고 동기화 시작: HOMS 전체 / 90개씩보기',flush=True)
@@ -90,8 +82,7 @@ def execute_inventory_sync(api, adapter, sync_state, cfg):
             catalog,added=persist_inventory_catalog(cfg,rows);push_catalog_to_server(api,catalog)
             if added:print('신규 부자재 영구 catalog 반영 완료:',len(added),'건',flush=True)
         except Exception as persistence_error:
-            print('신규 부자재 GitHub 영구 저장 실패:',type(persistence_error).__name__,str(persistence_error),flush=True)
-            print('재고 동기화는 계속 진행합니다. HOMSELF_BACKUP_GITHUB_TOKEN 설정을 확인하세요.',flush=True)
+            print('신규 부자재 GitHub 영구 저장 실패:',type(persistence_error).__name__,str(persistence_error),flush=True);print('재고 동기화는 계속 진행합니다. HOMSELF_BACKUP_GITHUB_TOKEN 설정을 확인하세요.',flush=True)
         result=api.post('inventory-sync',{'request_id':request_id,'items':rows});print('재고 동기화 완료:',result.get('count',len(rows)),'건',flush=True)
     except BaseException as error:
         try:api.post('inventory-sync/fail',{'request_id':request_id,'error':f'{type(error).__name__}: {error}'})
@@ -101,16 +92,22 @@ def execute_inventory_sync(api, adapter, sync_state, cfg):
         try:adapter.show_admin(refresh=False)
         except Exception:pass
 
-def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.sleep, stop=lambda:False):
-    previous=None
-    last_keepalive=time.monotonic()
-    last_server_boot_id=None
-    pending_server_restore=False
-    last_restore_attempt=0.0
+def execute_material_image_sync(api,adapter,cfg,image_state):
+    try:
+        from image_sync import execute_image_sync
+        return execute_image_sync(api,adapter,cfg,image_state)
+    except BaseException as error:
+        print('이미지 동기화 실패:',type(error).__name__,str(error),flush=True)
+        try:adapter.show_admin(refresh=False)
+        except Exception:pass
+        return None
+
+def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
+    previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0
     while not stop():
         try:
             api.post('heartbeat',{'mode':'live'});state=api.get('preview')
-        except (ConnectionFailure, TimeoutError, OSError):
+        except (ConnectionFailure,TimeoutError,OSError):
             print('대기 중 서버 연결 끊김. 불출 없이 연결을 재확인합니다.',flush=True)
             if once:raise
             sleep(min(30,poll_seconds*2));continue
@@ -120,18 +117,20 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
         if server_boot_id:
             if last_server_boot_id is None:last_server_boot_id=server_boot_id
             elif server_boot_id!=last_server_boot_id:
-                last_server_boot_id=server_boot_id;pending_server_restore=True;last_restore_attempt=0.0
-                print('Render 서버 재시작 감지: GitHub 영구 catalog 자동 복원 대기',flush=True)
+                last_server_boot_id=server_boot_id;pending_server_restore=True;last_restore_attempt=0.0;print('Render 서버 재시작 감지: GitHub 영구 catalog 자동 복원 대기',flush=True)
 
         sync_state=state.get('inventory_sync') or {}
+        image_state=state.get('material_image_sync') or {}
+        image_requested=image_state.get('status') in ('requested','running')
         if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):mode='재고 동기화 요청 처리 중'
+        elif image_requested and not state.get('batch_active') and not state.get('blocked'):mode='이미지 동기화 요청 처리 중'
         elif state.get('blocked'):mode='다른 처리기 작업 중'
         elif state.get('batch_active'):mode='일괄 불출 진행 중 / 남은 '+str(state.get('batch_remaining',0))+'건'
         else:mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:print(mode,flush=True);previous=mode
 
-        now=time.monotonic();idle=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
-        if pending_server_restore and idle and now-last_restore_attempt>=60:
+        now=time.monotonic();idle_base=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
+        if pending_server_restore and idle_base and not image_requested and now-last_restore_attempt>=60:
             last_restore_attempt=now
             if restore_catalog(api,cfg):
                 pending_server_restore=False;print('Render 재시작 후 GitHub 영구 catalog 자동 복원 완료',flush=True);previous=None
@@ -139,7 +138,7 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
                 sleep(poll_seconds);continue
             print('GitHub catalog 자동 복원 재시도는 60초 후 진행합니다.',flush=True)
 
-        if idle:
+        if idle_base and not image_requested:
             try:
                 if execute_catalog_persist(api,cfg):
                     previous=None
@@ -152,6 +151,13 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
             if once:return
             sleep(poll_seconds);continue
 
+        if image_requested and idle_base:
+            image_state=api.get('material-image-sync')
+            execute_material_image_sync(api,adapter,cfg,image_state);previous=None
+            if once:return
+            sleep(poll_seconds);continue
+
+        idle=idle_base and not image_requested
         now=time.monotonic()
         if idle and now-last_keepalive>=KEEPALIVE_SECONDS:
             try:adapter.keep_alive()
@@ -164,8 +170,7 @@ def run_loop(api, adapter, journal, cfg, poll_seconds=5, once=False, sleep=time.
             except HTTPFailure as error:
                 if error.status!=409:raise
                 item=None
-            if item:
-                print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True);execute_item(api,adapter,journal,item);previous=None
+            if item:print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True);execute_item(api,adapter,journal,item);previous=None
         elif state.get('batch_active') and not state.get('blocked') and not state['items'] and state.get('batch_remaining',0)==0:
             api.post('batch/finish',{});print('일괄 불출 완료. 이후 승인 건은 다음 불출 시작까지 대기합니다.',flush=True)
             try:adapter.show_admin(refresh=False)
@@ -200,7 +205,7 @@ def main():
             if args.reconcile:reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin/releases';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
-            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
+            print('일괄 불출/재고/이미지 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
             if adapter:adapter.close()
