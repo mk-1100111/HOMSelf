@@ -82,7 +82,7 @@ def execute_inventory_sync(api,adapter,sync_state,cfg):
             catalog,added=persist_inventory_catalog(cfg,rows);push_catalog_to_server(api,catalog)
             if added:print('신규 부자재 영구 catalog 반영 완료:',len(added),'건',flush=True)
         except Exception as persistence_error:
-            print('신규 부자재 GitHub 영구 저장 실패:',type(persistence_error).__name__,str(persistence_error),flush=True);print('재고 동기화는 계속 진행합니다. HOMSELF_BACKUP_GITHUB_TOKEN 설정을 확인하세요.',flush=True)
+            print('부자재 GitHub 영구 저장 실패:',type(persistence_error).__name__,str(persistence_error),flush=True);print('재고 동기화는 계속 진행합니다. HOMSELF_BACKUP_GITHUB_TOKEN 설정을 확인하세요.',flush=True)
         result=api.post('inventory-sync',{'request_id':request_id,'items':rows});print('재고 동기화 완료:',result.get('count',len(rows)),'건',flush=True)
     except BaseException as error:
         try:api.post('inventory-sync/fail',{'request_id':request_id,'error':f'{type(error).__name__}: {error}'})
@@ -91,16 +91,6 @@ def execute_inventory_sync(api,adapter,sync_state,cfg):
     finally:
         try:adapter.show_admin(refresh=False)
         except Exception:pass
-
-def execute_material_image_sync(api,adapter,cfg,image_state):
-    try:
-        from image_sync import execute_image_sync
-        return execute_image_sync(api,adapter,cfg,image_state)
-    except BaseException as error:
-        print('이미지 동기화 실패:',type(error).__name__,str(error),flush=True)
-        try:adapter.show_admin(refresh=False)
-        except Exception:pass
-        return None
 
 def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
     previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0
@@ -120,17 +110,14 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
                 last_server_boot_id=server_boot_id;pending_server_restore=True;last_restore_attempt=0.0;print('Render 서버 재시작 감지: GitHub 영구 catalog 자동 복원 대기',flush=True)
 
         sync_state=state.get('inventory_sync') or {}
-        image_state=state.get('material_image_sync') or {}
-        image_requested=image_state.get('status') in ('requested','running')
         if sync_state.get('status')=='requested' and not state.get('batch_active') and not state.get('blocked'):mode='재고 동기화 요청 처리 중'
-        elif image_requested and not state.get('batch_active') and not state.get('blocked'):mode='이미지 동기화 요청 처리 중'
         elif state.get('blocked'):mode='다른 처리기 작업 중'
         elif state.get('batch_active'):mode='일괄 불출 진행 중 / 남은 '+str(state.get('batch_remaining',0))+'건'
         else:mode='승인 누적 대기 / 관리자 불출 시작 대기'
         if mode!=previous:print(mode,flush=True);previous=mode
 
-        now=time.monotonic();idle_base=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
-        if pending_server_restore and idle_base and not image_requested and now-last_restore_attempt>=60:
+        now=time.monotonic();idle=not state.get('batch_active') and not state.get('blocked') and sync_state.get('status')!='requested'
+        if pending_server_restore and idle and now-last_restore_attempt>=60:
             last_restore_attempt=now
             if restore_catalog(api,cfg):
                 pending_server_restore=False;print('Render 재시작 후 GitHub 영구 catalog 자동 복원 완료',flush=True);previous=None
@@ -138,7 +125,7 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
                 sleep(poll_seconds);continue
             print('GitHub catalog 자동 복원 재시도는 60초 후 진행합니다.',flush=True)
 
-        if idle_base and not image_requested:
+        if idle:
             try:
                 if execute_catalog_persist(api,cfg):
                     previous=None
@@ -151,13 +138,6 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
             if once:return
             sleep(poll_seconds);continue
 
-        if image_requested and idle_base:
-            image_state=api.get('material-image-sync')
-            execute_material_image_sync(api,adapter,cfg,image_state);previous=None
-            if once:return
-            sleep(poll_seconds);continue
-
-        idle=idle_base and not image_requested
         now=time.monotonic()
         if idle and now-last_keepalive>=KEEPALIVE_SECONDS:
             try:adapter.keep_alive()
@@ -205,7 +185,7 @@ def main():
             if args.reconcile:reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin/releases';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
-            print('일괄 불출/재고/이미지 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
+            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
             if adapter:adapter.close()
