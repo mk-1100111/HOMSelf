@@ -101,7 +101,7 @@ function card(item){
 
   const meta=document.createElement('div');
   meta.className='manage-meta';
-  meta.textContent='HOMS 이름: '+item.material_name+' · '+item.material_code+(item.specification?' · '+item.specification:'');
+  meta.textContent=item.material_name+' · '+item.material_code+(item.specification?' · '+item.specification:'');
 
   const nameEditor=document.createElement('div');
   nameEditor.className='manage-name-editor';
@@ -123,7 +123,7 @@ function card(item){
   nameInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveName();}};
   const nameReset=document.createElement('button');
   nameReset.className='secondary';
-  nameReset.textContent='HOMS 이름 사용';
+  nameReset.textContent='원본 이름 사용';
   nameReset.onclick=()=>patch(item.material_code,{display_name:null}).catch(e=>$('status').textContent=e.message);
   nameActions.append(nameSave,nameReset);
   nameEditor.append(nameLabel,nameInput,nameActions);
