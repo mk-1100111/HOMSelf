@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { Store, check, loadCatalog } = require('./model/store');
 const installCatalogAdmin = require('./catalog_admin');
+const { STOCK_SNAPSHOT_FILE, writeJsonFile } = require('./github_data');
 
 function createApp(config = process.env) {
   const adminPin=String(config.ADMIN_TOKEN || '');
@@ -33,6 +34,37 @@ function createApp(config = process.env) {
     synced_at INTEGER NOT NULL
   ) STRICT;`);
 
+  const restoreStockSnapshot=()=>{
+    const existing=Number((store.db.prepare('SELECT COUNT(*) AS n FROM material_stock').get()||{}).n||0);
+    if(existing>0) return 0;
+    const snapshotPath=String(config.STOCK_SNAPSHOT_PATH||'').trim();
+    if(!snapshotPath || !fs.existsSync(snapshotPath)) return 0;
+    const snapshot=JSON.parse(fs.readFileSync(snapshotPath,'utf8'));
+    if(!snapshot || snapshot.version!==1 || !Array.isArray(snapshot.items)) throw new Error('재고 snapshot 형식이 잘못됐습니다.');
+    const upsert=store.db.prepare('INSERT INTO material_stock(material_code,material_name,specification,stock_quantity,synced_at) VALUES(?,?,?,?,?)');
+    let restored=0,maxSyncedAt=0;
+    store.tx(()=>{
+      for(const row of snapshot.items){
+        check(row&&typeof row.material_code==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(row.material_code),'재고 snapshot 상품코드가 잘못됐습니다.');
+        check(typeof row.material_name==='string'&&row.material_name.trim(),'재고 snapshot 상품명이 잘못됐습니다.');
+        check(Number.isSafeInteger(row.stock_quantity)&&row.stock_quantity>=0,'재고 snapshot 수량이 잘못됐습니다.');
+        check(Number.isSafeInteger(row.synced_at)&&row.synced_at>0,'재고 snapshot 동기화 시간이 잘못됐습니다.');
+        upsert.run(row.material_code,row.material_name.trim(),String(row.specification||'').trim(),row.stock_quantity,row.synced_at);
+        maxSyncedAt=Math.max(maxSyncedAt,row.synced_at);restored++;
+      }
+      if(restored){
+        store.setSetting('inventory_sync_status','completed');
+        store.setSetting('inventory_sync_completed_at',maxSyncedAt||Date.now());
+        store.setSetting('inventory_sync_count',restored);
+        store.setSetting('inventory_sync_error','');
+        store.setSetting('inventory_snapshot_restored','1');
+      }
+    });
+    if(restored)console.log('GitHub 재고 snapshot DB 복원:',restored,'건');
+    return restored;
+  };
+  restoreStockSnapshot();
+
   const mergeSyncedMaterials=() => {
     const known=new Set(catalog.materials.map(m=>m.material_code));
     for(const row of store.db.prepare('SELECT material_code,material_name,specification FROM material_stock ORDER BY material_code').all()) {
@@ -57,10 +89,12 @@ function createApp(config = process.env) {
         existing.material_name=row.material_name.trim();existing.material_unit=row.material_unit;
         if(specification) existing.specification=specification;
         if(typeof row.visible==='boolean') existing.visible=row.visible;
+        if(typeof row.display_name==='string'&&row.display_name.trim()) existing.display_name=row.display_name.trim();
         if(typeof row.image_data==='string'&&row.image_data) existing.image_data=row.image_data;
       } else {
         const item={material_code:row.material_code,material_name:row.material_name.trim(),material_unit:row.material_unit,visible:row.visible!==false};
         if(specification) item.specification=specification;
+        if(typeof row.display_name==='string'&&row.display_name.trim()) item.display_name=row.display_name.trim();
         if(typeof row.image_data==='string'&&row.image_data) item.image_data=row.image_data;
         catalog.materials.push(item);byCode.set(item.material_code,item);
       }
@@ -69,7 +103,17 @@ function createApp(config = process.env) {
     return {count};
   };
 
-  const inventoryState=() => ({status:store.setting('inventory_sync_status') || 'idle',request_id:store.setting('inventory_sync_request_id') || '',requested_at:Number(store.setting('inventory_sync_requested_at') || 0),completed_at:Number(store.setting('inventory_sync_completed_at') || 0),count:Number(store.setting('inventory_sync_count') || 0),error:store.setting('inventory_sync_error') || ''});
+  const inventoryState=() => ({
+    status:store.setting('inventory_sync_status') || 'idle',
+    request_id:store.setting('inventory_sync_request_id') || '',
+    requested_at:Number(store.setting('inventory_sync_requested_at') || 0),
+    completed_at:Number(store.setting('inventory_sync_completed_at') || 0),
+    count:Number(store.setting('inventory_sync_count') || 0),
+    error:store.setting('inventory_sync_error') || '',
+    snapshot_commit:store.setting('inventory_snapshot_commit') || '',
+    snapshot_error:store.setting('inventory_snapshot_error') || '',
+    snapshot_restored:store.setting('inventory_snapshot_restored')==='1'
+  });
   const requestInventorySync=() => store.tx(() => {
     check(store.paused() && !store.batchActive(),'일괄 불출 중에는 재고 동기화를 시작할 수 없습니다.');
     check(!store.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting') LIMIT 1").get(),'처리 중인 항목이 있어 재고 동기화를 시작할 수 없습니다.');
@@ -81,8 +125,28 @@ function createApp(config = process.env) {
     const state=inventoryState();check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');check(Array.isArray(rows) && rows.length>0 && rows.length<=500,'재고 동기화 데이터가 잘못됐습니다.',400);
     const now=Date.now(),seen=new Set();const upsert=store.db.prepare(`INSERT INTO material_stock(material_code,material_name,specification,stock_quantity,synced_at) VALUES(?,?,?,?,?) ON CONFLICT(material_code) DO UPDATE SET material_name=excluded.material_name,specification=excluded.specification,stock_quantity=excluded.stock_quantity,synced_at=excluded.synced_at`);
     for(const row of rows){check(row && typeof row.material_code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(row.material_code),'상품코드가 잘못됐습니다.',400);check(!seen.has(row.material_code),'동일 상품코드가 중복됐습니다.',400);seen.add(row.material_code);check(typeof row.material_name==='string' && row.material_name.trim().length>0 && row.material_name.length<=200,'상품명이 잘못됐습니다.',400);check(typeof row.specification==='string' && row.specification.length<=500,'규격이 잘못됐습니다.',400);check(Number.isSafeInteger(row.stock_quantity) && row.stock_quantity>=0 && row.stock_quantity<=100000000,'현재재고가 잘못됐습니다.',400);upsert.run(row.material_code,row.material_name.trim(),row.specification.trim(),row.stock_quantity,now);}
-    mergeSyncedMaterials();store.setSetting('inventory_sync_status','completed');store.setSetting('inventory_sync_completed_at',now);store.setSetting('inventory_sync_count',rows.length);store.setSetting('inventory_sync_error','');return inventoryState();
+    mergeSyncedMaterials();store.setSetting('inventory_sync_status','completed');store.setSetting('inventory_sync_completed_at',now);store.setSetting('inventory_sync_count',rows.length);store.setSetting('inventory_sync_error','');store.setSetting('inventory_snapshot_restored','0');return inventoryState();
   });
+
+  const stockSnapshot=()=>({
+    version:1,
+    generated_at:Date.now(),
+    items:store.db.prepare('SELECT material_code,material_name,specification,stock_quantity,synced_at FROM material_stock ORDER BY material_code').all()
+  });
+
+  const persistStockSnapshot=async()=>{
+    try{
+      const commit=await writeJsonFile(config,STOCK_SNAPSHOT_FILE,stockSnapshot(),'Sync HOMSelf stock snapshot from HOMS');
+      store.setSetting('inventory_snapshot_commit',commit||'');
+      store.setSetting('inventory_snapshot_error','');
+      console.log('재고 snapshot GitHub 영구 저장 완료:',commit||'(commit 확인 불가)');
+      return {persisted:true,commit};
+    }catch(error){
+      store.setSetting('inventory_snapshot_error',String(error.message||error).slice(0,500));
+      console.error('재고 snapshot GitHub 저장 실패:',error.name||'Error',error.message||String(error));
+      return {persisted:false,commit:'',error:error.message||String(error)};
+    }
+  };
 
   const kioskCatalog=() => {
     mergeSyncedMaterials();
@@ -98,7 +162,7 @@ function createApp(config = process.env) {
   const authFailures=new Map();
   const auth = role => (req,res,next) => {const pinRole=role==='ADMIN'||role==='KIOSK';const key=pinRole?role+':'+req.ip:null;const now=Date.now();if(key){const state=authFailures.get(key);if(state&&state.blockedUntil>now)return res.status(429).json({error:'인증 시도가 너무 많습니다. 5분 후 다시 시도하세요.'});if(state&&state.blockedUntil&&state.blockedUntil<=now)authFailures.delete(key);}const supplied=String(req.get('authorization')||'').replace(/^Bearer /,'');const digest=s=>crypto.createHash('sha256').update(s).digest();if(!crypto.timingSafeEqual(digest(supplied),digest(config[role+'_TOKEN']))){if(key){const prior=authFailures.get(key)||{failures:0,blockedUntil:0};prior.failures+=1;if(prior.failures>=5){prior.failures=0;prior.blockedUntil=now+5*60*1000;authFailures.set(key,prior);return res.status(429).json({error:'인증 시도가 너무 많습니다. 5분 후 다시 시도하세요.'});}authFailures.set(key,prior);}return res.status(401).json({error:'인증키를 확인하세요.'});}if(key)authFailures.delete(key);next();};
 
-  installCatalogAdmin({app,auth,catalog,store});
+  installCatalogAdmin({app,auth,catalog,store,config});
   app.use('/api',(req,res,next)=>{res.set('Cache-Control','no-store');next();});
   app.get('/api/catalog',auth('KIOSK'),(req,res)=>res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res)=>res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
@@ -117,7 +181,7 @@ function createApp(config = process.env) {
   app.post('/api/worker/catalog-sync',auth('WORKER'),(req,res)=>res.json(mergePersistentMaterials(req.body.materials)));
   app.post('/api/worker/claim',auth('WORKER'),(req,res)=>res.json({item:store.claim()}));
   app.post('/api/worker/batch/finish',auth('WORKER'),(req,res)=>res.json(store.finishBatch()));
-  app.post('/api/worker/inventory-sync',auth('WORKER'),(req,res)=>res.json(applyInventorySync(req.body.request_id,req.body.items)));
+  app.post('/api/worker/inventory-sync',auth('WORKER'),async(req,res,next)=>{try{const state=applyInventorySync(req.body.request_id,req.body.items);const snapshot=await persistStockSnapshot();res.json({...state,stock_snapshot:snapshot});}catch(error){next(error);}});
   app.post('/api/worker/inventory-sync/fail',auth('WORKER'),(req,res)=>res.json(failInventorySync(req.body.request_id,req.body.error)));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res)=>res.json(store.item(req.params.id)));
   app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res)=>res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
