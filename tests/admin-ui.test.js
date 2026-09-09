@@ -9,8 +9,10 @@ const adminView=fs.readFileSync(path.join(__dirname,'..','views','admin.ejs'),'u
 const materialsAdminSource=fs.readFileSync(path.join(__dirname,'..','public','materials_admin.js'),'utf8');
 const managersAdminSource=fs.readFileSync(path.join(__dirname,'..','public','managers_admin.js'),'utf8');
 const managersAdminView=fs.readFileSync(path.join(__dirname,'..','views','managers_admin.ejs'),'utf8');
+const adminCss=fs.readFileSync(path.join(__dirname,'..','public','admin.css'),'utf8');
 const adminManageCss=fs.readFileSync(path.join(__dirname,'..','public','admin_manage.css'),'utf8');
 const adminNavCss=fs.readFileSync(path.join(__dirname,'..','public','admin_nav.css'),'utf8');
+const adminLoginCss=fs.readFileSync(path.join(__dirname,'..','public','admin_login.css'),'utf8');
 
 test('admin request UI script parses and keeps manager grouping client-side',()=>{
   assert.doesNotThrow(()=>new vm.Script(adminSource,{filename:'public/admin.js'}));
@@ -73,4 +75,16 @@ test('admin navigation stays high and tablet logout remains on one line',()=>{
   assert.match(adminNavCss,/grid-template-columns:auto minmax\(0,1fr\) auto!important/);
   assert.match(adminNavCss,/\.topbar-logout\{white-space:nowrap;min-width:max-content\}/);
   assert.match(adminNavCss,/width:calc\(100% - 166px\)/);
+});
+
+test('admin typography scales fluidly and keeps critical labels on one line',()=>{
+  assert.match(adminCss,/font-size:clamp\(16px,1\.35vw,19px\)/);
+  assert.match(adminCss,/--admin-lg:clamp\(/);
+  assert.match(adminCss,/\.topbar h1\{[^}]*font-size:var\(--admin-xl\)[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+  assert.match(adminCss,/\.material-title\{[^}]*font-size:var\(--admin-lg\)[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+  assert.match(adminCss,/\.status-pill\{[^}]*font-size:var\(--admin-sm\)[^}]*white-space:nowrap/);
+  assert.match(adminManageCss,/\.manager-card h3\{[^}]*font-size:clamp\(/);
+  assert.match(adminManageCss,/\.manage-card h3\{[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+  assert.match(adminNavCss,/font-size:clamp\(/);
+  assert.match(adminLoginCss,/\.admin-login-card h1\{[^}]*font-size:clamp\(/);
 });
