@@ -61,12 +61,14 @@ test('material admin shows kiosk-equivalent available stock badges',()=>{
   assert.match(materialsAdminSource,/키오스크 사용 가능 재고/);
 });
 
-test('manager and material admin always keep three proportional columns',()=>{
+test('manager and material admin scale from three to at most five columns',()=>{
   assert.doesNotThrow(()=>new vm.Script(managersAdminSource,{filename:'public/managers_admin.js'}));
   assert.match(managersAdminView,/class="manage-grid manager-grid"/);
   assert.match(managersAdminSource,/manager-image-wrap/);
   assert.match(managersAdminSource,/manager-card-body/);
   assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(adminManageCss,/@media\(min-width:980px\)\{\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}\}/);
+  assert.match(adminManageCss,/@media\(min-width:1380px\)\{\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
   assert.match(adminManageCss,/@media\(max-width:650px\)/);
   assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\);gap:5px\}/);
   assert.match(adminManageCss,/\.manage-image-wrap\{[^}]*aspect-ratio:1\/1/);
