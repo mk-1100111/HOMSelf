@@ -48,7 +48,8 @@ async function prepareStartupConfig(sourceConfig = process.env) {
   const config = { ...sourceConfig };
   const token = githubToken(config);
   if (!token) {
-    console.log('GitHub startup data 토큰 없음: 기존 CATALOG_PATH와 임시 DB를 사용합니다.');
+    if(config.NODE_ENV==='production')throw new Error('무료 Render 운영에는 HOMSelf-data Read/Write GitHub 토큰이 필요합니다.');
+    console.log('GitHub startup data 토큰 없음: 로컬 catalog와 임시 DB를 사용합니다.');
     return config;
   }
 
