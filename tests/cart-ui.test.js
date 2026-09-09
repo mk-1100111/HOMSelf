@@ -55,12 +55,24 @@ test('kiosk header maximizes welcome text and uses equal nav controls',()=>{
   assert.match(navCss,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(15px,8\.2cqi,36px\)!important/);
 });
 
-test('List badge scales proportionally and centers native text',()=>{
+test('main admin menu control matches kiosk header control proportions',()=>{
+  assert.match(mainCss,/--kiosk-header-control:clamp\(58px,9vw,72px\)/);
+  assert.match(mainCss,/\.navbar-toggler\{[^}]*width:var\(--kiosk-header-control\)!important[^}]*height:var\(--kiosk-header-control\)!important/);
+  assert.match(mainCss,/\.navbar-toggler-icon\{[^}]*width:72%!important[^}]*height:72%!important/);
+});
+
+test('List and review badges share proportional sizing and empty List badge is hidden',()=>{
   assert.match(navCss,/\.kiosk-list-badge\{[^}]*--badge-size:clamp\(30px,4\.8vw,40px\)!important/);
   assert.match(navCss,/\.kiosk-list-badge\{[^}]*display:grid!important[^}]*place-items:center!important/);
-  assert.match(navCss,/padding:\.08em 0 0!important/);
-  assert.match(navCss,/line-height:1!important/);
-  assert.match(navCss,/\.kiosk-list-badge::before,\.kiosk-list-badge::after\{content:none!important/);
+  assert.match(navCss,/\.kiosk-list-badge:empty\{display:none!important\}/);
+  assert.match(navCss,/\.premium-cart-review-count\{[^}]*--badge-size:clamp\(30px,4\.8vw,40px\)/);
+  assert.match(navCss,/\.premium-cart-review-count\{[^}]*font-size:clamp\(\.78rem,1\.8vw,1\.02rem\)!important/);
+});
+
+test('countdown stays fluid and never wraps',()=>{
+  assert.match(navCss,/#countdown\{[^}]*max-width:calc\(100vw - 24px\)!important/);
+  assert.match(navCss,/#countdown\{[^}]*font-size:clamp\(\.92rem,2\.6vw,1\.35rem\)!important/);
+  assert.match(navCss,/#countdown\{[^}]*white-space:nowrap!important/);
 });
 
 test('material selector keeps three cards per row including tablet',()=>{
