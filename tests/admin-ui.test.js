@@ -66,7 +66,8 @@ test('manager and material admin always keep three proportional columns',()=>{
   assert.match(managersAdminSource,/manager-image-wrap/);
   assert.match(managersAdminSource,/manager-card-body/);
   assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.match(adminManageCss,/@media\(max-width:650px\)\{[^}]*\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/s);
+  assert.match(adminManageCss,/@media\(max-width:650px\)/);
+  assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\);gap:5px\}/);
   assert.match(adminManageCss,/\.manage-image-wrap\{[^}]*aspect-ratio:1\/1/);
   assert.match(adminManageCss,/\.manager-image-wrap\{[^}]*aspect-ratio:1\/1/);
 });
