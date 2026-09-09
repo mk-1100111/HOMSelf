@@ -122,6 +122,8 @@
         });
 
         let material_list = <%- JSON.stringify(materials) %>;
+        const materialLabel = material => String((material && (material.display_name || material.material_name)) || '').trim();
+        const materialByCode = code => material_list.find(item => String(item.material_code) === String(code));
 
         function setMaterialImage(img,placeholder,material){
             if(material.image_data){img.src=material.image_data;return;}
@@ -139,7 +141,8 @@
             col.className='col';
             const card=document.createElement('div');
             card.className='card h-100 material-card';
-            card.onclick=()=>addToCart(material.material_name);
+            card.dataset.materialCode=String(material.material_code);
+            card.onclick=()=>addToCart(material.material_code);
 
             const imageWrap=document.createElement('div');
             imageWrap.className='material-image-wrap';
@@ -156,7 +159,7 @@
             placeholder.hidden=true;
             const img=document.createElement('img');
             img.className='card-img-top material-image';
-            img.alt=material.material_name;
+            img.alt=materialLabel(material);
             img.onload=()=>{placeholder.hidden=true;img.hidden=false;};
             setMaterialImage(img,placeholder,material);
             imageWrap.append(img,placeholder);
@@ -165,7 +168,7 @@
             body.className='card-body text-center';
             const title=document.createElement('h4');
             title.className='card-title text-center';
-            title.textContent=material.material_name;
+            title.textContent=materialLabel(material);
             body.appendChild(title);
             card.append(imageWrap,body);col.appendChild(card);
             document.getElementById('material-lists').appendChild(col);
@@ -183,31 +186,38 @@
         var plusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/> </svg>';
         var cartQuantities = {};
 
-        function addToCart(name) {
-            if (cartQuantities[name]) cartQuantities[name]++;
-            else cartQuantities[name] = 1;
+        function addToCart(code) {
+            const material=materialByCode(code);
+            if(!material)return;
+            const key=String(material.material_code);
+            if (cartQuantities[key]) cartQuantities[key]++;
+            else cartQuantities[key] = 1;
             updateCart();
         }
-        function removeFromCart(name) { delete cartQuantities[name]; updateCart(); }
+        function removeFromCart(code) { delete cartQuantities[String(code)]; updateCart(); }
         function updateCart() {
             var cartItemsElement = document.getElementById("cart-items");
             cartItemsElement.innerHTML = "";
             cartItemsElement.style.display = "block";
             var modalCartListElement = document.getElementById("modal-cart-list");
             modalCartListElement.innerHTML = "";
-            Object.keys(cartQuantities).forEach(function (name, index, array) {
-                var cartItemDiv = document.createElement("div");cartItemDiv.classList.add("cart-item");
+            Object.keys(cartQuantities).forEach(function (code, index, array) {
+                const material=materialByCode(code);
+                if(!material){delete cartQuantities[code];return;}
+                const label=materialLabel(material)||material.material_name||code;
+                const quantity=cartQuantities[code]*material.material_unit;
+                var cartItemDiv = document.createElement("div");cartItemDiv.classList.add("cart-item");cartItemDiv.dataset.materialCode=String(material.material_code);
                 var buttonContainer = document.createElement("div");buttonContainer.classList.add("button-container");
                 var delButton = document.createElement("button");delButton.innerText = "삭제";delButton.classList.add("btn", "btn-danger");delButton.style.cursor = "pointer";delButton.style.fontSize = "40%";
-                delButton.onclick = function () {delete cartQuantities[name];removeFromCart(name);updateCart();};
-                var plusButton = document.createElement("div");plusButton.innerHTML = plusIcon;plusButton.classList.add("cart-button");plusButton.style.cursor = "pointer";plusButton.onclick = function () {cartQuantities[name]++;updateCart();};
+                delButton.onclick = function () {removeFromCart(code);};
+                var plusButton = document.createElement("div");plusButton.innerHTML = plusIcon;plusButton.classList.add("cart-button");plusButton.style.cursor = "pointer";plusButton.onclick = function () {cartQuantities[code]++;updateCart();};
                 var minusButton = document.createElement("div");minusButton.innerHTML = minusIcon;minusButton.classList.add("cart-button");minusButton.style.cursor = "pointer";
-                minusButton.onclick = function () {cartQuantities[name] = Math.max(0, cartQuantities[name] - 1);if (cartQuantities[name] === 0) removeFromCart(name);updateCart();};
+                minusButton.onclick = function () {cartQuantities[code] = Math.max(0, cartQuantities[code] - 1);if (cartQuantities[code] === 0) delete cartQuantities[code];updateCart();};
                 var textElement = document.createElement("span");
-                textElement.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;
+                textElement.innerText = label + " x " + quantity;
                 textElement.classList.add("cart-text");
                 cartItemDiv.appendChild(delButton);cartItemDiv.appendChild(textElement);buttonContainer.appendChild(plusButton);buttonContainer.appendChild(minusButton);cartItemDiv.appendChild(buttonContainer);cartItemsElement.appendChild(cartItemDiv);
-                var modalCartItem = document.createElement("div");modalCartItem.innerText = name + " x " + cartQuantities[name] * material_list.find(item => item.material_name === name).material_unit;modalCartListElement.appendChild(modalCartItem);
+                var modalCartItem = document.createElement("div");modalCartItem.dataset.materialCode=String(material.material_code);modalCartItem.innerText = label + " x " + quantity;modalCartListElement.appendChild(modalCartItem);
                 if (index === array.length - 1) cartItemDiv.scrollIntoView({ behavior: 'smooth' });
             });
             bootstrap.Offcanvas.getOrCreateInstance(document.getElementById("offcanvasBottom")).show();
