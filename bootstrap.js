@@ -66,19 +66,23 @@ async function prepareStartupConfig(sourceConfig = process.env) {
     const legacyImages = legacyMaterialImageCount(result.value);
     if (legacyImages > 0) {
       console.log('GitHub 관리자 사진 자동 이관 시작:', legacyImages, '건');
-      await writeJsonFile(config, CATALOG_FILE, result.value, 'Migrate HOMSelf admin material photos to static assets');
-      result = await readJsonFile(config, CATALOG_FILE);
-      validateCatalogShape(result.value);
-      const remaining = legacyMaterialImageCount(result.value);
-      if (remaining > 0) throw new Error(`관리자 사진 자동 이관 후 base64 사진 ${remaining}건이 남아 있습니다.`);
-      console.log('GitHub 관리자 사진 자동 이관 완료:', legacyImages, '건');
+      try {
+        await writeJsonFile(config, CATALOG_FILE, result.value, 'Migrate HOMSelf admin material photos to static assets');
+        result = await readJsonFile(config, CATALOG_FILE);
+        validateCatalogShape(result.value);
+        const remaining = legacyMaterialImageCount(result.value);
+        if (remaining > 0) throw new Error(`관리자 사진 자동 이관 후 base64 사진 ${remaining}건이 남아 있습니다.`);
+        console.log('GitHub 관리자 사진 자동 이관 완료:', legacyImages, '건');
+      } catch (migrationError) {
+        console.error('GitHub 관리자 사진 자동 이관 보류 - HOMSelf 저장소 Contents Read/Write 권한 확인:', migrationError.name || 'Error', migrationError.message || String(migrationError));
+      }
     }
 
     writeStartupFile(STARTUP_CATALOG_FILE, result.text);
     config.CATALOG_PATH = STARTUP_CATALOG_FILE;
     console.log('GitHub 최신 catalog로 서버 시작:', `${DATA_REPOSITORY}/${CATALOG_FILE}`, '부자재', result.value.materials.length, '건');
   } catch (error) {
-    console.error('GitHub startup catalog 조회/사진 이관 실패 - 운영 데이터 불일치 방지를 위해 시작 중단:', error.name || 'Error', error.message || String(error));
+    console.error('GitHub startup catalog 조회 실패 - 기존 CATALOG_PATH로 시작:', error.name || 'Error', error.message || String(error));
     if (config.NODE_ENV === 'production') throw error;
   }
 
