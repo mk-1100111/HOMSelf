@@ -41,37 +41,46 @@ test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
   assert.match(css,/height:min\(52dvh,520px\)/);
   assert.match(css,/\.premium-cart-drawer\.is-minimized\{height:148px/);
   assert.match(css,/\.is-minimized \.premium-cart-scroll\{display:none\}/);
-  assert.match(css,/\.is-minimized \.premium-cart-footer-summary\{display:none\}/);
   assert.match(css,/\.premium-cart-review/);
   assert.match(css,/linear-gradient\(135deg,#0d6efd,#2563eb\)/);
   assert.match(css,/body\.list-panel-open #material-lists\{margin-bottom:58dvh\}/);
 });
 
-test('kiosk header welcome always fits its real center column and List badge is optically centered',()=>{
+test('kiosk header maximizes welcome text and uses text-only List action',()=>{
   assert.match(css,/\.navbar \.nav\{[^}]*container-type:inline-size/);
-  const welcome=css.match(/\.navbar #welcome-ms\{([^}]*)\}/)?.[1]||'';
-  assert.match(welcome,/font-size:clamp\(10px,5\.1cqi,30px\)/);
-  assert.match(welcome,/white-space:nowrap/);
-  assert.match(welcome,/overflow:visible/);
-  assert.match(welcome,/text-overflow:clip/);
-  assert.match(css,/\.kiosk-nav-action\{[^}]*--nav-size:clamp\(48px,7\.2vw,58px\)/);
-  assert.match(css,/\.kiosk-nav-action svg\{[^}]*width:clamp\(23px,3\.7vw,30px\)[^}]*height:clamp\(23px,3\.7vw,30px\)/);
-  const badge=css.match(/\.kiosk-list-badge\{([^}]*)\}/)?.[1]||'';
-  assert.match(badge,/--badge-size:clamp\(32px,5vw,42px\)/);
-  assert.match(badge,/display:grid/);
-  assert.match(badge,/place-items:center/);
-  assert.match(badge,/padding:0!important/);
-  assert.match(badge,/line-height:1!important/);
-  assert.match(badge,/font-size:clamp\(\.82rem,2vw,1\.08rem\)/);
+  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(16px,7cqi,36px\)/);
+  assert.match(css,/\.kiosk-list-action>svg\{display:none!important\}/);
+  assert.match(css,/\.kiosk-list-label\{[^}]*font-size:clamp\(1\.22rem,3\.5vw,1\.75rem\)/);
+  assert.match(css,/\.kiosk-back-action svg\{[^}]*width:78%!important[^}]*height:78%!important/);
+});
+
+test('List badge scales proportionally and is optically centered',()=>{
+  const badgeBlocks=[...css.matchAll(/\.kiosk-list-badge\{([^}]*)\}/g)].map(match=>match[1]);
+  const badge=badgeBlocks.at(-1)||'';
+  assert.match(badge,/--badge-size:clamp\(31px,4\.7vw,40px\)/);
+  assert.match(badge,/padding:clamp\(1px,\.18vw,2px\) 0 0!important/);
+  assert.match(badge,/font-size:clamp\(\.86rem,1\.9vw,1\.08rem\)/);
+  assert.match(css,/\.kiosk-list-badge\{[^}]*display:grid[^}]*place-items:center/);
+});
+
+test('material selector keeps three cards per row including tablet',()=>{
+  assert.match(css,/#material-lists\.row\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(css,/@media\(max-width:480px\)[^{]*\{[^}]*#material-lists\.row\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/s);
+});
+
+test('List hides kind-unit summaries and aligns unit with total quantity',()=>{
+  assert.match(css,/\.premium-cart-head-summary,\.premium-cart-footer-summary\{display:none!important\}/);
+  assert.match(css,/\.cart-product-info\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(css,/\.cart-product-meta span:first-child\{display:none!important\}/);
+  assert.match(css,/\.cart-product-total\{grid-column:2;grid-row:2/);
+  assert.match(source,/불출단위/);
 });
 
 test('kiosk typography scales fluidly across devices without wrapping key labels',()=>{
   assert.match(css,/--fs-md:clamp\(/);
   assert.match(css,/body\{font-size:clamp\(18px,2\.7vw,24px\)\}/);
   assert.match(css,/\.cart-product-name\{[^}]*font-size:var\(--fs-lg\)[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
-  assert.match(css,/\.cart-product-meta\{[^}]*font-size:var\(--fs-sm\)[^}]*white-space:nowrap/);
   assert.match(css,/\.premium-cart-review\{[^}]*font-size:var\(--fs-xl\)[^}]*white-space:nowrap/);
-  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:clamp\(/);
   assert.match(mainCss,/font-size: clamp\(18px, 2\.7vw, 24px\)/);
   assert.match(mainCss,/#manager-lists \.card-title\{[^}]*font-size:clamp\(/);
 });
@@ -81,6 +90,4 @@ test('List items omit specification option details',()=>{
   const modalSection=source.slice(source.indexOf('function createModalCartProduct'),source.indexOf('function updateModalCartProduct'));
   assert.doesNotMatch(productSection,/specification/);
   assert.doesNotMatch(modalSection,/specification/);
-  assert.match(productSection,/상품코드/);
-  assert.match(productSection,/불출단위/);
 });
