@@ -7,6 +7,17 @@ body {
     max-width: 799px;
 }
 
+:root{
+    --kiosk-control-color:#fff;
+    --kiosk-control-bg:rgba(255,255,255,.08);
+    --kiosk-control-bg-active:rgba(255,255,255,.15);
+    --kiosk-control-border:rgba(255,255,255,.12);
+    --kiosk-control-radius:clamp(13px,2vw,18px);
+    --kiosk-icon-scale:72%;
+    --kiosk-icon-stroke:2.2;
+    --kiosk-control-font-size:clamp(1.05rem,2.2vw,1.35rem);
+}
+
 .container-fluid {
     max-width: 799px;
     margin: 0 auto;
@@ -15,14 +26,19 @@ body {
 #modal-cart-list{font-size:clamp(1rem,2vw,1.2rem)}
 .navbar{--kiosk-header-control:clamp(58px,9vw,72px);min-height:calc(var(--kiosk-header-control) + 16px);height:auto;padding:8px clamp(5px,1vw,8px)}
 .navbar .container-fluid{display:grid;grid-template-columns:var(--kiosk-header-control) minmax(0,1fr) var(--kiosk-header-control);align-items:center;gap:clamp(4px,1vw,8px)}
-#homebt{display:grid;place-items:center;width:var(--kiosk-header-control);min-width:var(--kiosk-header-control);height:var(--kiosk-header-control);margin:0;padding:0;border:1px solid rgba(255,255,255,.12);border-radius:clamp(13px,2vw,18px);background:rgba(255,255,255,.08);color:#fff}
-#homebt svg{display:block;width:72%;height:72%;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#homebt{display:grid;place-items:center;width:var(--kiosk-header-control);min-width:var(--kiosk-header-control);height:var(--kiosk-header-control);margin:0;padding:0;border:1px solid var(--kiosk-control-border);border-radius:var(--kiosk-control-radius);background:var(--kiosk-control-bg);color:var(--kiosk-control-color);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);transition:background .15s ease,transform .12s ease}
+#homebt svg{display:block;width:72%;height:72%;fill:none;stroke:currentColor;stroke-width:var(--kiosk-icon-stroke);stroke-linecap:round;stroke-linejoin:round}
+#homebt:active{transform:scale(.96);background:var(--kiosk-control-bg-active)}
 .navbar .nav{min-width:0;width:100%;justify-content:center!important;container-type:inline-size}
 .navbar .nav-item{min-width:0;width:100%;text-align:center}
 .navbar .nav-item .navbar-brand,.kiosk-main-prompt{display:block;width:100%;margin:0;font-size:clamp(15px,8.2cqi,36px);line-height:1;letter-spacing:-.035em;white-space:nowrap;overflow:visible;text-overflow:clip}
-.navbar-toggler{display:grid;place-items:center;width:var(--kiosk-header-control)!important;min-width:var(--kiosk-header-control)!important;height:var(--kiosk-header-control)!important;margin:0;padding:0!important;border-radius:clamp(13px,2vw,18px)!important}
-.navbar-toggler-icon{width:72%!important;height:72%!important;background-size:72% 72%!important;background-position:center!important}
-.navbar-brand,.nav-item,.btn{font-size:clamp(1.05rem,2.2vw,1.35rem);white-space:nowrap}
+.navbar-toggler{display:grid;place-items:center;width:var(--kiosk-header-control)!important;min-width:var(--kiosk-header-control)!important;height:var(--kiosk-header-control)!important;margin:0;padding:0!important;border:1px solid var(--kiosk-control-border)!important;border-radius:var(--kiosk-control-radius)!important;background:var(--kiosk-control-bg)!important;color:var(--kiosk-control-color)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important;transition:background .15s ease,transform .12s ease}
+.navbar-toggler:focus{box-shadow:inset 0 1px 0 rgba(255,255,255,.07)!important}
+.navbar-toggler:active{transform:scale(.96);background:var(--kiosk-control-bg-active)!important}
+.navbar-toggler svg{display:block;width:72%;height:72%;fill:none;stroke:currentColor;stroke-width:var(--kiosk-icon-stroke);stroke-linecap:round;stroke-linejoin:round}
+.navbar-toggler-icon{display:none!important}
+.navbar-brand,.nav-item,.btn{font-size:var(--kiosk-control-font-size);white-space:nowrap}
+.admin-login-button{font-family:'Jua',sans-serif;font-size:var(--kiosk-control-font-size)!important;font-weight:400;letter-spacing:-.02em;line-height:1}
 #manager-lists{margin-top:15%;margin-left:.5%;margin-right:.5%}
 #manager-lists>.col{container-type:inline-size;min-width:0}
 #manager-lists .card{min-width:0;overflow:hidden}
