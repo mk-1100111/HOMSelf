@@ -2,6 +2,7 @@
 const pendingKey = 'homself.pending.v1';
 const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
 const kioskMaterialLabel = material => String(material && (material.display_name || material.material_name) || '').trim();
+const kioskMaterialByCode = code => (material_list || []).find(item => String(item.material_code) === String(code));
 
 if(typeof renderMaterialCard==='function'){
   const baseRenderMaterialCard=renderMaterialCard;
@@ -10,30 +11,107 @@ if(typeof renderMaterialCard==='function'){
     if(Number.isFinite(material.available_stock)&&material.available_stock<=0) return;
     baseRenderMaterialCard(material);
     const last=document.getElementById('material-lists')?.lastElementChild;
+    const card=last?.querySelector('.material-card');
     const label=kioskMaterialLabel(material);
     const title=last?.querySelector('.card-title');
     const img=last?.querySelector('.material-image');
+    if(card){
+      card.dataset.materialCode=String(material.material_code);
+      card.onclick=()=>addToCart(material.material_code);
+    }
     if(title&&label)title.textContent=label;
     if(img&&label)img.alt=label;
     if(material.image_data&&img)img.src=material.image_data;
   };
 }
 
+if(typeof addToCart==='function'){
+  addToCart=function(code){
+    const material=kioskMaterialByCode(code);
+    if(!material)return;
+    const key=String(material.material_code);
+    cartQuantities[key]=(cartQuantities[key]||0)+1;
+    updateCart();
+  };
+}
+
+if(typeof removeFromCart==='function'){
+  removeFromCart=function(code){
+    delete cartQuantities[String(code)];
+    updateCart();
+  };
+}
+
 if(typeof updateCart==='function'){
-  const baseUpdateCart=updateCart;
   updateCart=function(){
-    baseUpdateCart();
-    const names=Object.keys(cartQuantities||{});
-    const cartTexts=[...document.querySelectorAll('#cart-items .cart-text')];
-    const modalItems=[...document.querySelectorAll('#modal-cart-list > div')];
-    names.forEach((name,index)=>{
-      const material=material_list.find(item=>item.material_name===name);
-      if(!material)return;
-      const label=kioskMaterialLabel(material)||name;
-      const quantity=cartQuantities[name]*material.material_unit;
-      if(cartTexts[index])cartTexts[index].innerText=label+' x '+quantity;
-      if(modalItems[index])modalItems[index].innerText=label+' x '+quantity;
-    });
+    const cartItemsElement=document.getElementById('cart-items');
+    const modalCartListElement=document.getElementById('modal-cart-list');
+    if(!cartItemsElement||!modalCartListElement)return;
+    cartItemsElement.innerHTML='';
+    cartItemsElement.style.display='block';
+    modalCartListElement.innerHTML='';
+
+    const codes=Object.keys(cartQuantities||{});
+    for(const [index,code] of codes.entries()){
+      const material=kioskMaterialByCode(code);
+      if(!material){delete cartQuantities[code];continue;}
+      const count=cartQuantities[code];
+      const label=kioskMaterialLabel(material)||material.material_name||code;
+      const quantity=count*material.material_unit;
+
+      const cartItemDiv=document.createElement('div');
+      cartItemDiv.classList.add('cart-item');
+      cartItemDiv.dataset.materialCode=String(material.material_code);
+
+      const buttonContainer=document.createElement('div');
+      buttonContainer.classList.add('button-container');
+
+      const delButton=document.createElement('button');
+      delButton.innerText='삭제';
+      delButton.classList.add('btn','btn-danger');
+      delButton.style.cursor='pointer';
+      delButton.style.fontSize='40%';
+      delButton.onclick=()=>removeFromCart(code);
+
+      const plusButton=document.createElement('div');
+      plusButton.innerHTML=plusIcon;
+      plusButton.classList.add('cart-button');
+      plusButton.style.cursor='pointer';
+      plusButton.onclick=()=>{cartQuantities[code]++;updateCart();};
+
+      const minusButton=document.createElement('div');
+      minusButton.innerHTML=minusIcon;
+      minusButton.classList.add('cart-button');
+      minusButton.style.cursor='pointer';
+      minusButton.onclick=()=>{
+        cartQuantities[code]=Math.max(0,cartQuantities[code]-1);
+        if(cartQuantities[code]===0)delete cartQuantities[code];
+        updateCart();
+      };
+
+      const textElement=document.createElement('span');
+      textElement.innerText=label+' x '+quantity;
+      textElement.classList.add('cart-text');
+
+      cartItemDiv.appendChild(delButton);
+      cartItemDiv.appendChild(textElement);
+      buttonContainer.appendChild(plusButton);
+      buttonContainer.appendChild(minusButton);
+      cartItemDiv.appendChild(buttonContainer);
+      cartItemsElement.appendChild(cartItemDiv);
+
+      const modalCartItem=document.createElement('div');
+      modalCartItem.dataset.materialCode=String(material.material_code);
+      modalCartItem.innerText=label+' x '+quantity;
+      modalCartListElement.appendChild(modalCartItem);
+
+      if(index===codes.length-1)cartItemDiv.scrollIntoView({behavior:'smooth'});
+    }
+
+    if(typeof bootstrap!=='undefined'&&document.getElementById('offcanvasBottom')){
+      bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('offcanvasBottom')).show();
+    }
+    if(typeof updateBadge==='function')updateBadge();
   };
 }
 
@@ -50,6 +128,6 @@ function showRequestSuccess(){
 }
 
 window.getHomselfCatalog=async function(){try{let token=sessionStorage.getItem('homself.kiosk.token');if(!token)token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');if(!token)return null;token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다. 기존 긴 키는 전환 기간에만 사용할 수 있습니다.');}const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}sessionStorage.setItem('homself.kiosk.token',token);return await response.json();}catch(error){alert(error.message);return null;}};
-async function transmitPending(){const pending=JSON.parse(localStorage.getItem(pendingKey)||'null');if(!pending)return;let token=sessionStorage.getItem('homself.kiosk.token');if(!token){token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');if(!token)return;}token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}sessionStorage.setItem('homself.kiosk.token',token);const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});const result=await response.json();if(!response.ok){if(response.status===401||response.status===429)sessionStorage.removeItem('homself.kiosk.token');if(response.status===400)localStorage.removeItem(pendingKey);throw new Error(result.error||'접수 결과를 확인하지 못했습니다.');}localStorage.removeItem(pendingKey);await showRequestSuccess();location.assign('/main');}
-window.sendCart=async function(){if(window.homselfSending)return;try{if(!localStorage.getItem(pendingKey)){const items=Object.entries(cartQuantities).map(([name,count])=>{const m=material_list.find(m=>m.material_name===name);return {material_code:m.material_code,quantity:count*m.material_unit};});if(!items.length){alert('장바구니가 비어 있습니다.');return;}if(items.some(i=>!Number.isSafeInteger(i.quantity)||i.quantity<1||i.quantity>100000)){alert('수량은 1~100000 범위여야 합니다.');return;}const manager_name=new URLSearchParams(location.search).get('managerName');if(!manager_name){alert('매니저를 다시 선택하세요.');return;}const pending={key:crypto.randomUUID(),body:{manager_name,items}};localStorage.setItem(pendingKey,JSON.stringify(pending));}else if(!confirm('접수 확인이 끝나지 않은 이전 요청을 같은 번호로 재확인합니다. 계속할까요?'))return;window.homselfSending=true;if(typeof timeoutId!=='undefined')clearTimeout(timeoutId);if(typeof countdownInterval!=='undefined')clearInterval(countdownInterval);await transmitPending();}catch(error){alert(error.message+'\n기존 요청은 보존했습니다. 새 요청을 만들지 말고 재확인하세요.');}finally{window.homselfSending=false;}};
+async function transmitPending(){const pending=JSON.parse(localStorage.getItem(pendingKey)||'null');if(!pending)return;let token=sessionStorage.getItem('homself.kiosk.token');if(!token){token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');if(!token)return;}token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}sessionStorage.setItem('homself.kiosk.token',token);const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});const result=await response.json();if(!response.ok){if(response.status===401||response.status===429)sessionStorage.removeItem(pendingKey);if(response.status===400)localStorage.removeItem(pendingKey);throw new Error(result.error||'접수 결과를 확인하지 못했습니다.');}localStorage.removeItem(pendingKey);await showRequestSuccess();location.assign('/main');}
+window.sendCart=async function(){if(window.homselfSending)return;try{if(!localStorage.getItem(pendingKey)){const items=Object.entries(cartQuantities).map(([code,count])=>{const m=kioskMaterialByCode(code);if(!m)throw new Error('장바구니 자재코드를 기준정보에서 찾지 못했습니다: '+code);return {material_code:String(m.material_code),quantity:count*m.material_unit};});if(!items.length){alert('장바구니가 비어 있습니다.');return;}if(items.some(i=>!Number.isSafeInteger(i.quantity)||i.quantity<1||i.quantity>100000)){alert('수량은 1~100000 범위여야 합니다.');return;}const manager_name=new URLSearchParams(location.search).get('managerName');if(!manager_name){alert('매니저를 다시 선택하세요.');return;}const pending={key:crypto.randomUUID(),body:{manager_name,items}};localStorage.setItem(pendingKey,JSON.stringify(pending));}else if(!confirm('접수 확인이 끝나지 않은 이전 요청을 같은 번호로 재확인합니다. 계속할까요?'))return;window.homselfSending=true;if(typeof timeoutId!=='undefined')clearTimeout(timeoutId);if(typeof countdownInterval!=='undefined')clearInterval(countdownInterval);await transmitPending();}catch(error){alert(error.message+'\n기존 요청은 보존했습니다. 새 요청을 만들지 말고 재확인하세요.');}finally{window.homselfSending=false;}};
 const notice=document.getElementById('pending-notice');if(notice&&localStorage.getItem(pendingKey)){notice.hidden=false;notice.textContent='접수 확인이 끝나지 않은 요청이 있습니다. 새 요청 전에 확인하세요. ';const button=document.createElement('button');button.textContent='같은 요청 재확인';button.onclick=async()=>{button.disabled=true;try{await transmitPending();}catch(e){alert(e.message);}finally{button.disabled=false;}};notice.append(button);const managerLists=document.getElementById('manager-lists');if(managerLists)managerLists.style.display='none';}
