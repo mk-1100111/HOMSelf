@@ -33,16 +33,32 @@ test('newly selected material is focused in List without quantity-step scrolling
   assert.match(source,/updateCart\(\{focusCode:'',highlight:false\}\)/);
 });
 
-test('List is tablet first, keeps bottom items clear and has visible primary CTA',()=>{
-  assert.match(css,/#offcanvasBottom\.premium-cart-drawer/);
-  assert.match(css,/height:min\(76dvh,790px\)/);
-  assert.match(css,/scroll-padding-bottom:128px/);
-  assert.match(css,/\.cart-product-main/);
-  assert.match(css,/\.cart-product-thumb/);
-  assert.match(css,/\.cart-stepper/);
+test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
+  assert.match(source,/function setListMinimized\(minimized\)/);
+  assert.match(source,/class=\"list-minimize-btn\"/);
+  assert.match(source,/List 내리기/);
+  assert.match(css,/height:min\(52dvh,520px\)/);
+  assert.match(css,/\.premium-cart-drawer\.is-minimized\{height:148px/);
+  assert.match(css,/\.is-minimized \.premium-cart-scroll\{display:none\}/);
+  assert.match(css,/\.is-minimized \.premium-cart-footer-summary\{display:none\}/);
   assert.match(css,/\.premium-cart-review/);
   assert.match(css,/linear-gradient\(135deg,#0d6efd,#2563eb\)/);
-  assert.match(css,/\.kiosk-list-action/);
-  assert.match(css,/@media\(min-width:992px\)/);
-  assert.match(css,/width:470px/);
+  assert.match(css,/body\.list-panel-open #material-lists\{margin-bottom:58dvh\}/);
+});
+
+test('kiosk header typography and List badges are restored for tablet readability',()=>{
+  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:120%/);
+  assert.match(css,/\.kiosk-list-label\{[^}]*font-size:1em/);
+  assert.match(css,/\.kiosk-list-badge\{[^}]*min-width:34px[^}]*height:34px[^}]*font-size:\.9rem/);
+  assert.match(css,/\.premium-cart-head-summary\{[^}]*font-size:\.96rem/);
+  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:\.95rem/);
+});
+
+test('List items omit specification option details',()=>{
+  const productSection=source.slice(source.indexOf('function createCartProduct'),source.indexOf('function updateCartProduct'));
+  const modalSection=source.slice(source.indexOf('function createModalCartProduct'),source.indexOf('function updateModalCartProduct'));
+  assert.doesNotMatch(productSection,/specification/);
+  assert.doesNotMatch(modalSection,/specification/);
+  assert.match(productSection,/상품코드/);
+  assert.match(productSection,/불출단위/);
 });
