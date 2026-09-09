@@ -24,7 +24,10 @@ body {
 .navbar-toggler-icon{width:72%!important;height:72%!important;background-size:72% 72%!important;background-position:center!important}
 .navbar-brand,.nav-item,.btn{font-size:clamp(1.05rem,2.2vw,1.35rem);white-space:nowrap}
 #manager-lists{margin-top:15%;margin-left:.5%;margin-right:.5%}
-#manager-lists .card-title{font-size:clamp(1.05rem,2.3vw,1.4rem)!important;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#manager-lists>.col{container-type:inline-size;min-width:0}
+#manager-lists .card{min-width:0;overflow:hidden}
+#manager-lists .card-body{padding:clamp(8px,1.5vw,13px) clamp(4px,.8vw,8px)}
+#manager-lists .card-title{margin:0;font-size:clamp(1.2rem,9cqi,1.8rem)!important;line-height:1.08;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #manager-lists .btn{font-size:clamp(.95rem,1.9vw,1.18rem);white-space:nowrap}
 .modal-content{position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);margin:0;z-index:1050}
-@media(max-width:520px){.navbar{--kiosk-header-control:clamp(52px,14vw,62px)}.navbar .nav-item .navbar-brand,.kiosk-main-prompt{font-size:clamp(11px,7.6cqi,25px)}}
+@media(max-width:520px){.navbar{--kiosk-header-control:clamp(52px,14vw,62px)}.navbar .nav-item .navbar-brand,.kiosk-main-prompt{font-size:clamp(11px,7.6cqi,25px)}#manager-lists .card-title{font-size:clamp(1.05rem,10cqi,1.4rem)!important}}
