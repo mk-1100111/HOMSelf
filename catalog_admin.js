@@ -86,6 +86,18 @@ function installCatalogAdmin({app,auth,catalog,store,config}){
     }))
   });
 
+  const adminMaterialsWithStock=()=>{
+    const stockRows=new Map(store.db.prepare('SELECT * FROM material_stock').all().map(row=>[row.material_code,row]));
+    const activeMap=new Map(store.db.prepare(`SELECT material_code,COALESCE(SUM(quantity),0) AS quantity FROM request_items WHERE status IN ('pending','approved','claimed','submitting','needs_review') GROUP BY material_code`).all().map(row=>[row.material_code,row.quantity]));
+    const completedMap=new Map(store.db.prepare(`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity FROM request_items i JOIN material_stock s ON s.material_code=i.material_code WHERE i.status='completed' AND i.updated_at>s.synced_at AND i.evidence!='rejected_batch_completed' AND i.evidence NOT LIKE 'HOMS 조회 결과%' GROUP BY i.material_code`).all().map(row=>[row.material_code,row.quantity]));
+    return (catalog.materials||[]).map(material=>{
+      const stock=stockRows.get(material.material_code);
+      if(!stock)return {...material,visible:material.visible!==false,available_stock:null,stock_quantity:null,specification:material.specification||''};
+      const reserved=(activeMap.get(material.material_code)||0)+(completedMap.get(material.material_code)||0);
+      return {...material,visible:material.visible!==false,specification:stock.specification||material.specification||'',stock_quantity:stock.stock_quantity,available_stock:Math.max(0,stock.stock_quantity-reserved),stock_synced_at:stock.synced_at};
+    });
+  };
+
   const validateImage=value=>{
     if(value===null || value==='') return null;
     if(typeof value!=='string' || value.length>800000 || !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)){
@@ -129,7 +141,7 @@ function installCatalogAdmin({app,auth,catalog,store,config}){
     ensure();
     res.json({
       managers:(catalog.managers||[]).map(name=>({name,...(catalog.manager_settings[name]||{visible:true}),visible:(catalog.manager_settings[name]||{}).visible!==false})),
-      materials:(catalog.materials||[]).map(item=>({...item,visible:item.visible!==false})),
+      materials:adminMaterialsWithStock(),
       persistence:pendingState()
     });
   });
