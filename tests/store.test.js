@@ -99,12 +99,15 @@ test('duplicate request key is idempotent and invalid payloads are rejected',()=
   s.close();
 });
 
-test('request history keeps at most 1000 items by pruning oldest completed or rejected rows',()=>{
-  const s=new Store(':memory:');let firstId=null;
+test('request history keeps at most 1000 items by pruning one completed or rejected row',()=>{
+  const s=new Store(':memory:');const createdIds=[];
   for(let i=0;i<1001;i++){
     const key='retention-'+String(i).padStart(12,'0');
-    const item=pending(s,key);if(i===0)firstId=item.id;s.adminAction(item.id,'toggle_reject');
+    const item=pending(s,key);createdIds.push(item.id);s.adminAction(item.id,'toggle_reject');
   }
   assert.equal(s.db.prepare('SELECT COUNT(*) AS n FROM request_items').get().n,1000);
-  assert.equal(s.items().length,1000);assert.throws(()=>s.item(firstId),/찾을 수 없습니다/);s.close();
+  const remaining=new Set(s.items().map(item=>item.id));
+  assert.equal(remaining.size,1000);
+  assert.equal(createdIds.filter(id=>!remaining.has(id)).length,1);
+  s.close();
 });
