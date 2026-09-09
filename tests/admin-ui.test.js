@@ -7,8 +7,12 @@ const vm=require('node:vm');
 const adminSource=fs.readFileSync(path.join(__dirname,'..','public','admin.js'),'utf8');
 const adminView=fs.readFileSync(path.join(__dirname,'..','views','admin.ejs'),'utf8');
 const materialsAdminSource=fs.readFileSync(path.join(__dirname,'..','public','materials_admin.js'),'utf8');
+const managersAdminSource=fs.readFileSync(path.join(__dirname,'..','public','managers_admin.js'),'utf8');
+const managersAdminView=fs.readFileSync(path.join(__dirname,'..','views','managers_admin.ejs'),'utf8');
+const adminManageCss=fs.readFileSync(path.join(__dirname,'..','public','admin_manage.css'),'utf8');
+const adminNavCss=fs.readFileSync(path.join(__dirname,'..','public','admin_nav.css'),'utf8');
 
- test('admin request UI script parses and keeps manager grouping client-side',()=>{
+test('admin request UI script parses and keeps manager grouping client-side',()=>{
   assert.doesNotThrow(()=>new vm.Script(adminSource,{filename:'public/admin.js'}));
   assert.match(adminSource,/function managerGroups\(items\)/);
   assert.match(adminSource,/collapsedRequestManagers/);
@@ -51,4 +55,22 @@ test('material admin shows kiosk-equivalent available stock badges',()=>{
   assert.match(materialsAdminSource,/item\.available_stock\.toLocaleString\('ko-KR'\)/);
   assert.match(materialsAdminSource,/manage-stock-badge/);
   assert.match(materialsAdminSource,/키오스크 사용 가능 재고/);
+});
+
+test('manager admin keeps cards unclipped and three columns on desktop and tablet',()=>{
+  assert.doesNotThrow(()=>new vm.Script(managersAdminSource,{filename:'public/managers_admin.js'}));
+  assert.match(managersAdminView,/class="manage-grid manager-grid"/);
+  assert.match(managersAdminSource,/manager-image-wrap/);
+  assert.match(managersAdminSource,/manager-card-body/);
+  assert.match(adminManageCss,/\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(adminManageCss,/@media\(max-width:700px\)\{\.manager-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
+  assert.match(adminManageCss,/\.manager-image-wrap\{[^}]*aspect-ratio:1\/1/);
+});
+
+test('admin navigation stays high and tablet logout remains on one line',()=>{
+  assert.match(adminNavCss,/\.admin-shortcuts\{[^}]*right:22px;top:100px/);
+  assert.match(adminNavCss,/@media\(max-width:1100px\)/);
+  assert.match(adminNavCss,/grid-template-columns:auto minmax\(0,1fr\) auto!important/);
+  assert.match(adminNavCss,/\.topbar-logout\{white-space:nowrap;min-width:max-content\}/);
+  assert.match(adminNavCss,/width:calc\(100% - 166px\)/);
 });
