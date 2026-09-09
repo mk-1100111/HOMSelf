@@ -38,6 +38,14 @@ LOGIN_WAIT_SECONDS = 180
 RESULT_WAIT_SECONDS = 1
 
 
+def material_code_pattern(code: str) -> str:
+    return r"(?<![A-Za-z0-9_-])" + re.escape(str(code)) + r"(?![A-Za-z0-9_-])"
+
+
+def material_code_matches(text: str, code: str) -> bool:
+    return re.search(material_code_pattern(code), str(text or "")) is not None
+
+
 def run_git(repo: Path, *args: str, capture: bool = False) -> str:
     cmd = ["git", "-C", str(repo), *args]
     result = subprocess.run(
@@ -212,13 +220,15 @@ def _result_snapshot(driver, code: str) -> dict | None:
         const src=(img.currentSrc||img.src||'').trim();
         const nw=Number(img.naturalWidth||img.width||0);
         const nh=Number(img.naturalHeight||img.height||0);
+        const escaped=code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        const exactCode=new RegExp('(^|[^A-Za-z0-9_-])'+escaped+'([^A-Za-z0-9_-]|$)');
 
         let node=img, best='', fallback='';
         for(let i=0;i<10 && node;i++,node=node.parentElement){
             const text=(node.innerText||'').replace(/\r/g,'').trim();
             if(text && (!fallback || text.length<fallback.length) && text.length<=1800)
                 fallback=text;
-            if(text && text.includes(code) && text.length<=1800 &&
+            if(text && exactCode.test(text) && text.length<=1800 &&
                (!best || text.length<best.length))
                 best=text;
         }
@@ -228,9 +238,6 @@ def _result_snapshot(driver, code: str) -> dict | None:
 
 
 def search_one(driver, code: str) -> tuple[object | None, str, str]:
-    old = _result_snapshot(driver, code) or {}
-    old_src = str(old.get("src") or "")
-
     search = WebDriverWait(driver, 12).until(_visible_search)
     search.click()
     search.send_keys(Keys.CONTROL, "a")
@@ -250,14 +257,14 @@ def search_one(driver, code: str) -> tuple[object | None, str, str]:
 
         if not src or width < 2 or height < 2:
             return False
+        if not material_code_matches(text, code):
+            return False
 
         lowered = src.lower()
         if any(word in lowered for word in ("noimage", "no_image", "blank.gif", "placeholder")):
-            return snap if code in text else False
-
-        if code in text or (old_src and src != old_src) or not old_src:
             return snap
-        return False
+
+        return snap
 
     try:
         snap = WebDriverWait(
@@ -302,16 +309,17 @@ def parse_result_metadata(
     code: str,
     current_name: str,
 ) -> tuple[str | None, str | None]:
-    if code not in str(text):
+    if not material_code_matches(text, code):
         return None, None
 
     lines = clean_result_lines(text)
     normalized: list[str] = []
+    pattern = material_code_pattern(code)
     for line in lines:
         if line == code:
             continue
-        if code in line:
-            line = line.replace(code, "").strip(" -|/·:：")
+        if material_code_matches(line, code):
+            line = re.sub(pattern, "", line, count=1).strip(" -|/·:：")
             if not line:
                 continue
         if re.fullmatch(r"[\d,]+(?:원|개|EA)?", line, re.I):
