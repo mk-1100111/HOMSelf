@@ -4,6 +4,7 @@ const DATA_REPOSITORY = 'mk-1100111/HOMSelf-data';
 const DATA_BRANCH = 'main';
 const CATALOG_FILE = 'config/catalog.json';
 const STOCK_SNAPSHOT_FILE = 'runtime/stock_snapshot.json';
+const RUNTIME_STATE_FILE = 'runtime/queue_state.json';
 
 function githubToken(config = process.env) {
   return String(
@@ -59,11 +60,11 @@ async function currentSha(config, filePath) {
   return result ? result.sha : '';
 }
 
-async function writeJsonFile(config, filePath, value, message) {
+async function writeJsonFile(config, filePath, value, message, {compact=false} = {}) {
   const token = githubToken(config);
   if (!token) throw new Error('GitHub 영구 저장 토큰이 설정되지 않았습니다.');
 
-  const text = JSON.stringify(value, null, 2) + '\n';
+  const text = (compact ? JSON.stringify(value) : JSON.stringify(value, null, 2)) + '\n';
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const sha = await currentSha(config, filePath);
@@ -99,6 +100,7 @@ module.exports = {
   DATA_BRANCH,
   CATALOG_FILE,
   STOCK_SNAPSHOT_FILE,
+  RUNTIME_STATE_FILE,
   githubToken,
   readJsonFile,
   writeJsonFile
