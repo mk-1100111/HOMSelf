@@ -1,5 +1,6 @@
 const crypto=require('node:crypto');
 const {CATALOG_FILE,writeJsonFile}=require('./github_data');
+const {restoreRuntimeStateFromFile,createRuntimePersistence}=require('./runtime_state');
 
 function installCatalogAdmin({app,auth,catalog,store,config}){
   const serverBootId=crypto.randomUUID();
@@ -12,6 +13,49 @@ function installCatalogAdmin({app,auth,catalog,store,config}){
     for(const item of catalog.materials||[]) if(item.visible===undefined) item.visible=true;
   };
   ensure();
+
+  try{
+    const restored=restoreRuntimeStateFromFile(store,config.RUNTIME_STATE_PATH);
+    if(restored.restored)console.log('GitHub 불출요청/승인 상태 DB 복원:',restored.requests,'요청',restored.items,'항목');
+  }catch(error){
+    console.error('GitHub runtime state DB 복원 실패:',error.name||'Error',error.message||String(error));
+    throw error;
+  }
+
+  const runtimePersistence=createRuntimePersistence(store,config);
+  const durablePost=path=>path==='/api/requests'
+    ||path==='/api/admin/pause'
+    ||path==='/api/admin/approve-all'
+    ||path==='/api/admin/batch/start'
+    ||path==='/api/admin/inventory-sync'
+    ||path.startsWith('/api/admin/items/')
+    ||path==='/api/worker/batch/finish'
+    ||path==='/api/worker/inventory-sync'
+    ||path==='/api/worker/inventory-sync/fail'
+    ||/^\/api\/worker\/items\/[^/]+\/[^/]+$/.test(path);
+
+  // Free Render의 /tmp SQLite는 캐시다. 중요한 변경은 성공 응답 전에
+  // private HOMSelf-data/runtime/queue_state.json에 직렬화해서 영구 저장한다.
+  app.use((req,res,next)=>{
+    if(req.method!=='POST'||!durablePost(req.path))return next();
+    const originalJson=res.json.bind(res);
+    let intercepted=false;
+    res.json=body=>{
+      if(intercepted)return res;
+      if(res.statusCode>=400)return originalJson(body);
+      intercepted=true;
+      runtimePersistence.persist(req.method+' '+req.path).then(()=>originalJson(body)).catch(error=>{
+        console.error('GitHub runtime state 영구 저장 실패:',error.name||'Error',error.message||String(error));
+        if(!res.headersSent){
+          res.status(503);
+          res.set('Retry-After','2');
+          originalJson({error:'요청 상태를 GitHub에 영구 저장하지 못했습니다. 같은 요청번호로 다시 시도하세요.'});
+        }
+      });
+      return res;
+    };
+    next();
+  });
 
   try{
     const count=Number((store.db.prepare('SELECT COUNT(*) AS n FROM material_stock').get()||{}).n||0);
