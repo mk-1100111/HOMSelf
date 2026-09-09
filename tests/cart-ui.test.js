@@ -6,6 +6,7 @@ const vm=require('node:vm');
 
 const source=fs.readFileSync(path.join(__dirname,'..','public','request-client.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'..','public','material_list.css'),'utf8');
+const mainCss=fs.readFileSync(path.join(__dirname,'..','public','main.css'),'utf8');
 
 test('kiosk List client parses and keeps request safety flow',()=>{
   assert.doesNotThrow(()=>new vm.Script(source,{filename:'public/request-client.js'}));
@@ -46,12 +47,16 @@ test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
   assert.match(css,/body\.list-panel-open #material-lists\{margin-bottom:58dvh\}/);
 });
 
-test('kiosk header typography and List badges are restored for tablet readability',()=>{
-  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:120%/);
-  assert.match(css,/\.kiosk-list-label\{[^}]*font-size:1em/);
-  assert.match(css,/\.kiosk-list-badge\{[^}]*min-width:34px[^}]*height:34px[^}]*font-size:\.9rem/);
-  assert.match(css,/\.premium-cart-head-summary\{[^}]*font-size:\.96rem/);
-  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:\.95rem/);
+test('kiosk typography scales fluidly across devices without wrapping key labels',()=>{
+  assert.match(css,/--fs-md:clamp\(/);
+  assert.match(css,/body\{font-size:clamp\(18px,2\.7vw,24px\)\}/);
+  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:var\(--fs-xl\)[^}]*white-space:nowrap/);
+  assert.match(css,/\.cart-product-name\{[^}]*font-size:var\(--fs-lg\)[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
+  assert.match(css,/\.cart-product-meta\{[^}]*font-size:var\(--fs-sm\)[^}]*white-space:nowrap/);
+  assert.match(css,/\.premium-cart-review\{[^}]*font-size:var\(--fs-xl\)[^}]*white-space:nowrap/);
+  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:var\(--fs-md\)/);
+  assert.match(mainCss,/font-size: clamp\(18px, 2\.7vw, 24px\)/);
+  assert.match(mainCss,/#manager-lists \.card-title\{[^}]*font-size:clamp\(/);
 });
 
 test('List items omit specification option details',()=>{
