@@ -99,9 +99,29 @@ def persist_inventory_catalog(cfg,inventory_rows):
     return catalog,added
 
 
+def _inline_material_image_codes(catalog):
+    codes=[]
+    for item in catalog.get('materials',[]):
+        if not isinstance(item,dict):
+            continue
+        image=item.get('image_data')
+        if isinstance(image,str) and image.lower().startswith('data:image/'):
+            codes.append(str(item.get('material_code') or '?'))
+    return codes
+
+
 def persist_admin_catalog(cfg,catalog):
     if not isinstance(catalog,dict) or not isinstance(catalog.get('managers'),list) or not isinstance(catalog.get('materials'),list):
         raise RuntimeError('관리자 catalog 저장 데이터가 잘못됐습니다.')
+    inline_images=_inline_material_image_codes(catalog)
+    if inline_images:
+        sample=', '.join(inline_images[:5])
+        suffix='' if len(inline_images)<=5 else f' 외 {len(inline_images)-5}건'
+        raise RuntimeError(
+            '관리자 사진 정적 GitHub 저장이 아직 완료되지 않았습니다. '
+            'Render의 HOMSELF_APP_GITHUB_TOKEN에 HOMSelf Contents Read/Write 권한을 확인하세요. '
+            f'대기 상품코드: {sample}{suffix}'
+        )
     _,sha,repository,branch,token=load_catalog(cfg)
     result=save_catalog(cfg,catalog,sha,repository,branch,token,'Update HOMSelf admin catalog settings')
     return result.get('commit',{}).get('sha','')
