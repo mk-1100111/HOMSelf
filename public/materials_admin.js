@@ -70,9 +70,23 @@ function materialImage(img,item,placeholder){
   img.src=candidates[0];
 }
 
+function stockBadge(item){
+  if(!Number.isFinite(item.available_stock))return null;
+  const badge=document.createElement('span');
+  badge.className='manage-stock-badge';
+  badge.textContent=item.available_stock.toLocaleString('ko-KR');
+  badge.title='키오스크 사용 가능 재고';
+  return badge;
+}
+
 function card(item){
   const el=document.createElement('article');
   el.className='manage-card';
+
+  const imageWrap=document.createElement('div');
+  imageWrap.className='manage-image-wrap';
+  const badge=stockBadge(item);
+  if(badge)imageWrap.appendChild(badge);
 
   const placeholder=Object.assign(document.createElement('div'),{className:'image-placeholder',textContent:'이미지 준비중'});
   placeholder.hidden=true;
@@ -80,6 +94,7 @@ function card(item){
   img.alt=item.display_name||item.material_name;
   img.onload=()=>{placeholder.hidden=true;img.hidden=false;};
   materialImage(img,item,placeholder);
+  imageWrap.append(img,placeholder);
 
   const h=document.createElement('h3');
   h.textContent=item.display_name||item.material_name;
@@ -156,7 +171,7 @@ function card(item){
   del.onclick=()=>patch(item.material_code,{image_data:null}).catch(e=>$('status').textContent=e.message);
   row2.append(file,up,del);
 
-  el.append(img,placeholder,h,meta,nameEditor,toggle,row1,row2);
+  el.append(imageWrap,h,meta,nameEditor,toggle,row1,row2);
   return el;
 }
 
