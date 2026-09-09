@@ -84,10 +84,12 @@ test('material selector keeps three cards per row including tablet',()=>{
   assert.match(mobile,/#material-lists\.row\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
 
-test('material card names remain one proportional unclipped line',()=>{
+test('kiosk manager and material names stay readable at three-column widths',()=>{
+  assert.match(mainCss,/#manager-lists>\.col\{container-type:inline-size/);
+  assert.match(mainCss,/#manager-lists \.card-title\{[^}]*font-size:clamp\(1\.2rem,9cqi,1\.8rem\)!important/);
   assert.match(navCss,/\.material-card \.card-body\{[^}]*container-type:inline-size/);
-  assert.match(navCss,/\.material-card \.card-title\{[^}]*font-size:clamp\(\.48rem,4\.9cqi,1\.08rem\)!important/);
-  assert.match(navCss,/\.material-card \.card-title\{[^}]*white-space:nowrap!important[^}]*overflow:visible!important[^}]*text-overflow:clip!important/);
+  assert.match(navCss,/\.material-card \.card-title\{[^}]*font-size:clamp\(1\.08rem,8\.2cqi,1\.6rem\)!important/);
+  assert.match(navCss,/\.material-card \.card-title\{[^}]*white-space:nowrap!important[^}]*overflow:hidden!important[^}]*text-overflow:ellipsis!important/);
 });
 
 test('List hides kind-unit summaries and aligns unit with total quantity',()=>{
