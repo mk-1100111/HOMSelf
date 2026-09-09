@@ -1,5 +1,5 @@
 const fs=require('node:fs');
-const {RUNTIME_STATE_FILE,writeJsonFile}=require('./github_data');
+const {RUNTIME_STATE_FILE,writeJsonFile,githubToken}=require('./github_data');
 
 function rows(db,sql){return db.prepare(sql).all();}
 
@@ -79,9 +79,14 @@ function restoreRuntimeStateFromFile(store,filePath){
 }
 
 function createRuntimePersistence(store,config){
+  const token=githubToken(config);
   let chain=Promise.resolve();
   let lastCommit='';
   const persist=reason=>{
+    if(!token){
+      if(config&&config.NODE_ENV==='production')return Promise.reject(new Error('운영 runtime 영구 저장용 GitHub 토큰이 없습니다.'));
+      return Promise.resolve({persisted:false,skipped:true,commit:''});
+    }
     const job=chain.catch(()=>{}).then(async()=>{
       const state=exportRuntimeState(store);
       const commit=await writeJsonFile(config,RUNTIME_STATE_FILE,state,`Persist HOMSelf runtime state: ${reason}`,{compact:true});
