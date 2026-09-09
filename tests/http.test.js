@@ -11,6 +11,29 @@ test('rejects invalid admin and kiosk PIN configuration',()=>{
   assert.throws(()=>createApp({...base,WORKER_TOKEN:'short'}),/WORKER_TOKEN/);
 });
 
+test('restores last stock snapshot before Worker starts',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-stock-'));
+  const catalogPath=path.join(dir,'catalog.json');
+  const stockPath=path.join(dir,'stock.json');
+  const catalog={managers:['TEST'],manager_settings:{TEST:{visible:true}},materials:[{material_code:'10000060837',material_name:'FTTx 인식표',display_name:'FTTx 인식표 (주황)',material_unit:1,visible:true}]};
+  const syncedAt=Date.now()-1000;
+  fs.writeFileSync(catalogPath,JSON.stringify(catalog));
+  fs.writeFileSync(stockPath,JSON.stringify({version:1,generated_at:Date.now(),items:[{material_code:'10000060837',material_name:'FTTx 인식표',specification:'주황색',stock_quantity:77,synced_at:syncedAt}]}));
+  const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:catalogPath,STOCK_SNAPSHOT_PATH:stockPath,ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
+  const {app,store}=createApp(cfg);const server=app.listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port;
+  try{
+    const response=await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});
+    assert.equal(response.status,200);
+    const body=await response.json();
+    const item=body.materials.find(x=>x.material_code==='10000060837');
+    assert.equal(item.stock_quantity,77);
+    assert.equal(item.available_stock,77);
+    assert.equal(item.stock_synced_at,syncedAt);
+    assert.equal(body.inventory_sync.snapshot_restored,true);
+  }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
+});
+
 test('HTTP auth, approval sheet workflow, schema and EJS routes',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-http-'));
   const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:path.resolve('config/catalog.example.json'),ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
