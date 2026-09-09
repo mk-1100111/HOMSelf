@@ -1,6 +1,7 @@
 const crypto=require('node:crypto');
+const {CATALOG_FILE,writeJsonFile}=require('./github_data');
 
-function installCatalogAdmin({app,auth,catalog,store}){
+function installCatalogAdmin({app,auth,catalog,store,config}){
   const serverBootId=crypto.randomUUID();
   const originalPreview=store.preview.bind(store);
   store.preview=()=>({...originalPreview(),server_boot_id:serverBootId});
@@ -12,8 +13,6 @@ function installCatalogAdmin({app,auth,catalog,store}){
   };
   ensure();
 
-  // Render /tmp 재배포 후에는 재고 테이블이 비어 있으므로 Worker가 자동으로
-  // HOMS 재고를 다시 읽도록 한 번만 요청한다. 재고 숫자 자체는 GitHub에 저장하지 않는다.
   try{
     const count=Number((store.db.prepare('SELECT COUNT(*) AS n FROM material_stock').get()||{}).n||0);
     if(count===0 && store.setting('inventory_sync_status')!=='requested'){
@@ -23,7 +22,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
       store.setSetting('inventory_sync_completed_at','0');
       store.setSetting('inventory_sync_count','0');
       store.setSetting('inventory_sync_error','');
-      console.log('재고 DB 비어 있음: 회사 PC HOMS 자동 재동기화 요청');
+      console.log('재고 DB/snapshot 비어 있음: 회사 PC HOMS 자동 재동기화 요청');
     }
   }catch(error){
     console.error('재고 자동 재동기화 초기화 실패:',error.name||'Error');
@@ -59,18 +58,27 @@ function installCatalogAdmin({app,auth,catalog,store}){
     return name;
   };
 
-  const markPending=()=>{
-    const revision=crypto.randomUUID();
+  const markPending=(revision=crypto.randomUUID(),errorText='')=>{
     store.setSetting('catalog_persist_revision',revision);
     store.setSetting('catalog_persist_pending','1');
     store.setSetting('catalog_persist_requested_at',Date.now());
+    store.setSetting('catalog_persist_error',String(errorText||'').slice(0,500));
     return revision;
+  };
+  const markComplete=(revision,commit='')=>{
+    store.setSetting('catalog_persist_revision',revision);
+    store.setSetting('catalog_persist_pending','0');
+    store.setSetting('catalog_persist_completed_at',Date.now());
+    store.setSetting('catalog_persist_error','');
+    store.setSetting('catalog_persist_commit',commit||'');
   };
   const pendingState=()=>({
     pending:store.setting('catalog_persist_pending')==='1',
     revision:store.setting('catalog_persist_revision')||'',
     requested_at:Number(store.setting('catalog_persist_requested_at')||0),
-    completed_at:Number(store.setting('catalog_persist_completed_at')||0)
+    completed_at:Number(store.setting('catalog_persist_completed_at')||0),
+    commit:store.setting('catalog_persist_commit')||'',
+    error:store.setting('catalog_persist_error')||''
   });
 
   app.get('/api/admin/catalog-management',auth('ADMIN'),(req,res)=>{
@@ -82,26 +90,40 @@ function installCatalogAdmin({app,auth,catalog,store}){
     });
   });
 
-  app.post('/api/admin/catalog-management',auth('ADMIN'),(req,res)=>{
-    ensure();
-    const type=req.body&&req.body.type;
-    const key=String(req.body&&req.body.key||'').trim();
-    const patch=req.body&&req.body.patch||{};
-    if(type==='manager'){
-      if(!(catalog.managers||[]).includes(key)){const e=new Error('매니저를 찾을 수 없습니다.');e.status=404;throw e;}
-      const target=catalog.manager_settings[key]||(catalog.manager_settings[key]={visible:true});
-      if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
-      if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
-    }else if(type==='material'){
-      const target=(catalog.materials||[]).find(item=>item.material_code===key);
-      if(!target){const e=new Error('부자재를 찾을 수 없습니다.');e.status=404;throw e;}
-      if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
-      if('display_name' in patch){const name=validateDisplayName(patch.display_name);if(name)target.display_name=name;else delete target.display_name;}
-      if('material_unit' in patch){const unit=Number(patch.material_unit);if(!Number.isSafeInteger(unit)||unit<1||unit>100000){const e=new Error('불출단위는 1~100000 정수여야 합니다.');e.status=400;throw e;}target.material_unit=unit;}
-      if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
-    }else{const e=new Error('관리 대상이 잘못됐습니다.');e.status=400;throw e;}
-    const revision=markPending();
-    res.json({ok:true,revision,persistence:pendingState()});
+  app.post('/api/admin/catalog-management',auth('ADMIN'),async(req,res,next)=>{
+    try{
+      ensure();
+      const type=req.body&&req.body.type;
+      const key=String(req.body&&req.body.key||'').trim();
+      const patch=req.body&&req.body.patch||{};
+      if(type==='manager'){
+        if(!(catalog.managers||[]).includes(key)){const e=new Error('매니저를 찾을 수 없습니다.');e.status=404;throw e;}
+        const target=catalog.manager_settings[key]||(catalog.manager_settings[key]={visible:true});
+        if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
+        if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
+      }else if(type==='material'){
+        const target=(catalog.materials||[]).find(item=>item.material_code===key);
+        if(!target){const e=new Error('부자재를 찾을 수 없습니다.');e.status=404;throw e;}
+        if('visible' in patch){if(typeof patch.visible!=='boolean'){const e=new Error('노출값이 잘못됐습니다.');e.status=400;throw e;}target.visible=patch.visible;}
+        if('display_name' in patch){const name=validateDisplayName(patch.display_name);if(name)target.display_name=name;else delete target.display_name;}
+        if('material_unit' in patch){const unit=Number(patch.material_unit);if(!Number.isSafeInteger(unit)||unit<1||unit>100000){const e=new Error('불출단위는 1~100000 정수여야 합니다.');e.status=400;throw e;}target.material_unit=unit;}
+        if('image_data' in patch){const image=validateImage(patch.image_data);if(image)target.image_data=image;else delete target.image_data;}
+      }else{const e=new Error('관리 대상이 잘못됐습니다.');e.status=400;throw e;}
+
+      const revision=crypto.randomUUID();
+      store.setSetting('catalog_persist_revision',revision);
+      store.setSetting('catalog_persist_requested_at',Date.now());
+      let commit='';
+      try{
+        commit=await writeJsonFile(config,CATALOG_FILE,staticCatalog(),'Update HOMSelf admin catalog settings');
+        markComplete(revision,commit);
+        console.log('Render catalog GitHub 영구 저장 완료:',commit||'(commit 확인 불가)');
+      }catch(error){
+        markPending(revision,error.message||String(error));
+        console.error('Render catalog GitHub 직접 저장 실패 - Worker fallback 대기:',error.name||'Error',error.message||String(error));
+      }
+      res.json({ok:true,revision,persisted:!pendingState().pending,commit,persistence:pendingState()});
+    }catch(error){next(error);}
   });
 
   app.get('/api/worker/catalog-persist',auth('WORKER'),(req,res)=>{
@@ -111,8 +133,7 @@ function installCatalogAdmin({app,auth,catalog,store}){
   app.post('/api/worker/catalog-persist/complete',auth('WORKER'),(req,res)=>{
     const revision=String(req.body&&req.body.revision||'');
     if(store.setting('catalog_persist_revision')!==revision){const e=new Error('catalog 저장 요청이 이미 변경됐습니다.');e.status=409;throw e;}
-    store.setSetting('catalog_persist_pending','0');
-    store.setSetting('catalog_persist_completed_at',Date.now());
+    markComplete(revision,store.setting('catalog_persist_commit')||'worker');
     res.json({ok:true,...pendingState()});
   });
 
