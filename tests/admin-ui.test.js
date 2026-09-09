@@ -9,6 +9,7 @@ const adminView=fs.readFileSync(path.join(__dirname,'..','views','admin.ejs'),'u
 const materialsAdminSource=fs.readFileSync(path.join(__dirname,'..','public','materials_admin.js'),'utf8');
 const managersAdminSource=fs.readFileSync(path.join(__dirname,'..','public','managers_admin.js'),'utf8');
 const managersAdminView=fs.readFileSync(path.join(__dirname,'..','views','managers_admin.ejs'),'utf8');
+const materialsAdminView=fs.readFileSync(path.join(__dirname,'..','views','materials_admin.ejs'),'utf8');
 const adminCss=fs.readFileSync(path.join(__dirname,'..','public','admin.css'),'utf8');
 const adminManageCss=fs.readFileSync(path.join(__dirname,'..','public','admin_manage.css'),'utf8');
 const adminNavCss=fs.readFileSync(path.join(__dirname,'..','public','admin_nav.css'),'utf8');
@@ -59,22 +60,30 @@ test('material admin shows kiosk-equivalent available stock badges',()=>{
   assert.match(materialsAdminSource,/키오스크 사용 가능 재고/);
 });
 
-test('manager admin keeps cards unclipped and three columns on desktop and tablet',()=>{
+test('manager and material admin always keep three proportional columns',()=>{
   assert.doesNotThrow(()=>new vm.Script(managersAdminSource,{filename:'public/managers_admin.js'}));
   assert.match(managersAdminView,/class="manage-grid manager-grid"/);
   assert.match(managersAdminSource,/manager-image-wrap/);
   assert.match(managersAdminSource,/manager-card-body/);
-  assert.match(adminManageCss,/\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.match(adminManageCss,/@media\(max-width:700px\)\{\.manager-grid\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
+  assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(adminManageCss,/@media\(max-width:650px\)\{[^}]*\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/s);
+  assert.match(adminManageCss,/\.manage-image-wrap\{[^}]*aspect-ratio:1\/1/);
   assert.match(adminManageCss,/\.manager-image-wrap\{[^}]*aspect-ratio:1\/1/);
 });
 
-test('admin navigation stays high and tablet logout remains on one line',()=>{
+test('material admin removes HOMS name explanation labels',()=>{
+  assert.doesNotMatch(materialsAdminSource,/HOMS 이름:/);
+  assert.doesNotMatch(materialsAdminView,/HOMS 이름/);
+  assert.match(materialsAdminSource,/원본 이름 사용/);
+});
+
+test('admin navigation stays high and distributes links proportionally',()=>{
   assert.match(adminNavCss,/\.admin-shortcuts\{[^}]*right:22px;top:100px/);
   assert.match(adminNavCss,/@media\(max-width:1100px\)/);
+  assert.match(adminNavCss,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(adminNavCss,/grid-template-columns:auto minmax\(0,1fr\) auto!important/);
   assert.match(adminNavCss,/\.topbar-logout\{white-space:nowrap;min-width:max-content\}/);
-  assert.match(adminNavCss,/width:calc\(100% - 166px\)/);
+  assert.match(adminNavCss,/width:calc\(100% - 176px\)/);
 });
 
 test('admin typography scales fluidly and keeps critical labels on one line',()=>{
