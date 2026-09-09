@@ -20,13 +20,14 @@ if "%HOMSELF_WORKER_TOKEN%"=="" (
 echo.
 echo HOMSelf 회사 PC 일괄 자동불출을 시작합니다.
 echo Chrome에 관리자 탭과 HOMS 탭이 열립니다.
+echo Chrome 프로필 충돌이 감지되면 새 임시 프로필로 자동 재시도합니다.
 echo 1. HOMS 로그인은 직접 진행합니다.
 echo 2. 관리자 화면에서 필요한 요청들을 각각 승인합니다.
 echo 3. 승인건 일괄 불출 버튼을 누르면 그 시점의 승인건만 순서대로 자동불출합니다.
 echo 종료하려면 이 창에서 Ctrl+C를 누르세요.
 echo.
 
-".venv\Scripts\python.exe" worker.py --live
+".venv\Scripts\python.exe" worker_entry.py --live
 set "RESULT=%ERRORLEVEL%"
 echo.
 echo HOMSelf 자동불출이 종료되었습니다.
