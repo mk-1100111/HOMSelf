@@ -47,14 +47,22 @@ test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
   assert.match(css,/body\.list-panel-open #material-lists\{margin-bottom:58dvh\}/);
 });
 
+test('kiosk header welcome always fits its real center column and List badge is optically centered',()=>{
+  assert.match(css,/\.navbar \.nav\{[^}]*container-type:inline-size/);
+  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(10px,5\.1cqi,30px\)[^}]*white-space:nowrap[^}]*overflow:visible[^}]*text-overflow:clip/);
+  assert.match(css,/\.kiosk-nav-action\{[^}]*--nav-size:clamp\(48px,7\.2vw,58px\)/);
+  assert.match(css,/\.kiosk-nav-action svg\{[^}]*width:clamp\(23px,3\.7vw,30px\)[^}]*height:clamp\(23px,3\.7vw,30px\)/);
+  assert.match(css,/\.kiosk-list-badge\{[^}]*--badge-size:clamp\(32px,5vw,42px\)[^}]*display:grid[^}]*place-items:center[^}]*padding:0!important[^}]*line-height:1!important/);
+  assert.match(css,/\.kiosk-list-badge\{[^}]*font-size:clamp\(\.82rem,2vw,1\.08rem\)/);
+});
+
 test('kiosk typography scales fluidly across devices without wrapping key labels',()=>{
   assert.match(css,/--fs-md:clamp\(/);
   assert.match(css,/body\{font-size:clamp\(18px,2\.7vw,24px\)\}/);
-  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:var\(--fs-xl\)[^}]*white-space:nowrap/);
   assert.match(css,/\.cart-product-name\{[^}]*font-size:var\(--fs-lg\)[^}]*white-space:nowrap[^}]*text-overflow:ellipsis/);
   assert.match(css,/\.cart-product-meta\{[^}]*font-size:var\(--fs-sm\)[^}]*white-space:nowrap/);
   assert.match(css,/\.premium-cart-review\{[^}]*font-size:var\(--fs-xl\)[^}]*white-space:nowrap/);
-  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:var\(--fs-md\)/);
+  assert.match(css,/\.premium-cart-review-count\{[^}]*font-size:clamp\(/);
   assert.match(mainCss,/font-size: clamp\(18px, 2\.7vw, 24px\)/);
   assert.match(mainCss,/#manager-lists \.card-title\{[^}]*font-size:clamp\(/);
 });
