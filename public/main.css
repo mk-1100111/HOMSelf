@@ -13,9 +13,17 @@ body {
 }
 
 #modal-cart-list{font-size:clamp(1rem,2vw,1.2rem)}
-.navbar{height:8%}
-.navbar-brand,.navbar-toggler-icon,.nav-item,.btn{font-size:clamp(1.05rem,2.2vw,1.35rem);white-space:nowrap}
+.navbar{--kiosk-header-control:clamp(58px,9vw,72px);min-height:calc(var(--kiosk-header-control) + 16px);height:auto;padding:8px clamp(5px,1vw,8px)}
+.navbar .container-fluid{display:grid;grid-template-columns:var(--kiosk-header-control) minmax(0,1fr) var(--kiosk-header-control);align-items:center;gap:clamp(4px,1vw,8px)}
+#homebt{display:flex;align-items:center;justify-content:flex-start;width:var(--kiosk-header-control);min-width:0;height:var(--kiosk-header-control);margin:0;padding:0;font-size:clamp(.78rem,2vw,1.05rem);white-space:nowrap;overflow:hidden;text-overflow:clip}
+.navbar .nav{min-width:0;width:100%;justify-content:center!important}
+.navbar .nav-item{min-width:0;width:100%;text-align:center}
+.navbar .nav-item .navbar-brand{display:block;width:100%;margin:0;font-size:clamp(1rem,3vw,1.5rem);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navbar-toggler{display:grid;place-items:center;width:var(--kiosk-header-control)!important;min-width:var(--kiosk-header-control)!important;height:var(--kiosk-header-control)!important;margin:0;padding:0!important;border-radius:clamp(13px,2vw,18px)!important}
+.navbar-toggler-icon{width:72%!important;height:72%!important;background-size:72% 72%!important;background-position:center!important}
+.navbar-brand,.nav-item,.btn{font-size:clamp(1.05rem,2.2vw,1.35rem);white-space:nowrap}
 #manager-lists{margin-top:15%;margin-left:.5%;margin-right:.5%}
 #manager-lists .card-title{font-size:clamp(1.05rem,2.3vw,1.4rem)!important;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #manager-lists .btn{font-size:clamp(.95rem,1.9vw,1.18rem);white-space:nowrap}
 .modal-content{position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);margin:0;z-index:1050}
+@media(max-width:520px){.navbar{--kiosk-header-control:clamp(52px,14vw,62px)}#homebt{font-size:clamp(.66rem,3vw,.88rem)}.navbar .nav-item .navbar-brand{font-size:clamp(.85rem,4vw,1.15rem)}}
