@@ -6,7 +6,7 @@ function browserContext({cartQuantities,material_list,failInitially=false}){
   const saved=new Map(),sent=[];let fail=failInitially;
   const storage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)};
   const context={localStorage:storage,sessionStorage:{...storage,getItem:()=> 'k'.repeat(40)},window:{},
-    document:{getElementById:()=>null},alert:()=>{},confirm:()=>true,prompt:()=>null,
+    document:{getElementById:()=>null,querySelector:()=>null},alert:()=>{},confirm:()=>true,prompt:()=>null,
     location:{search:'?managerName=TEST',assign:()=>{}},URLSearchParams,
     crypto:{randomUUID:()=> '12345678-1234-1234'},cartQuantities,material_list,
     fetch:async(url,options)=>{sent.push(options);if(fail)throw Error('response lost');return {ok:true,json:async()=>({request_id:'ack'})};}};
