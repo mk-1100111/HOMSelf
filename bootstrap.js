@@ -73,7 +73,8 @@ async function prepareStartupConfig(sourceConfig = process.env) {
       console.log('GitHub runtime state 없음: 빈 요청 DB로 시작합니다.');
     }
   } catch (error) {
-    console.error('GitHub runtime state 조회 실패 - 임시 요청 DB로 시작:', error.name || 'Error', error.message || String(error));
+    console.error('GitHub runtime state 조회 실패 - 요청 유실 방지를 위해 시작 중단:', error.name || 'Error', error.message || String(error));
+    throw error;
   }
 
   try {
