@@ -49,11 +49,20 @@ test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
 
 test('kiosk header welcome always fits its real center column and List badge is optically centered',()=>{
   assert.match(css,/\.navbar \.nav\{[^}]*container-type:inline-size/);
-  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(10px,5\.1cqi,30px\)[^}]*white-space:nowrap[^}]*overflow:visible[^}]*text-overflow:clip/);
+  const welcome=css.match(/\.navbar #welcome-ms\{([^}]*)\}/)?.[1]||'';
+  assert.match(welcome,/font-size:clamp\(10px,5\.1cqi,30px\)/);
+  assert.match(welcome,/white-space:nowrap/);
+  assert.match(welcome,/overflow:visible/);
+  assert.match(welcome,/text-overflow:clip/);
   assert.match(css,/\.kiosk-nav-action\{[^}]*--nav-size:clamp\(48px,7\.2vw,58px\)/);
   assert.match(css,/\.kiosk-nav-action svg\{[^}]*width:clamp\(23px,3\.7vw,30px\)[^}]*height:clamp\(23px,3\.7vw,30px\)/);
-  assert.match(css,/\.kiosk-list-badge\{[^}]*--badge-size:clamp\(32px,5vw,42px\)[^}]*display:grid[^}]*place-items:center[^}]*padding:0!important[^}]*line-height:1!important/);
-  assert.match(css,/\.kiosk-list-badge\{[^}]*font-size:clamp\(\.82rem,2vw,1\.08rem\)/);
+  const badge=css.match(/\.kiosk-list-badge\{([^}]*)\}/)?.[1]||'';
+  assert.match(badge,/--badge-size:clamp\(32px,5vw,42px\)/);
+  assert.match(badge,/display:grid/);
+  assert.match(badge,/place-items:center/);
+  assert.match(badge,/padding:0!important/);
+  assert.match(badge,/line-height:1!important/);
+  assert.match(badge,/font-size:clamp\(\.82rem,2vw,1\.08rem\)/);
 });
 
 test('kiosk typography scales fluidly across devices without wrapping key labels',()=>{
