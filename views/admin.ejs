@@ -22,7 +22,7 @@
     <div class="status-sub"><span id="worker-state">회사 PC 연결 확인 중</span><span id="message" role="status">요청 정보를 불러오는 중입니다.</span></div>
   </section>
   <section class="board-grid">
-    <section class="request-panel request-list-panel"><div class="section-title"><div><h2>요청 목록</h2></div><div class="legend"><span class="legend-dot green"></span>승인 <span class="legend-dot red"></span>반려</div></div><div class="table-wrap request-table-wrap"><table><thead><tr><th>접수 시각</th><th>매니저</th><th>자재</th><th>수량</th><th>상태</th><th>승인 / 반려</th></tr></thead><tbody id="items"></tbody></table></div></section>
+    <section class="request-panel request-list-panel"><div class="section-title"><div><h2>요청 목록</h2></div><button type="button" id="cleanup-list" class="cleanup-list-button">정리</button></div><div class="table-wrap request-table-wrap"><table><thead><tr><th>접수 시각</th><th>자재 / 옵션</th><th>수량</th><th>상태</th><th>승인 / 반려</th></tr></thead><tbody id="items"></tbody></table></div></section>
     <aside class="approval-panel"><div class="approval-head"><div><span class="eyebrow">불출 대상</span><h2>승인 시트</h2></div><span id="approval-count" class="approval-count">0건</span></div><div id="approval-sheet" class="approval-sheet"></div><div id="approval-empty" class="approval-empty">승인된 요청이 없습니다.</div></aside>
   </section>
 </main>
