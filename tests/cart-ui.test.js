@@ -6,6 +6,7 @@ const vm=require('node:vm');
 
 const source=fs.readFileSync(path.join(__dirname,'..','public','request-client.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'..','public','material_list.css'),'utf8');
+const navCss=fs.readFileSync(path.join(__dirname,'..','public','kiosk_nav_tuning.css'),'utf8');
 const mainCss=fs.readFileSync(path.join(__dirname,'..','public','main.css'),'utf8');
 
 test('kiosk List client parses and keeps request safety flow',()=>{
@@ -46,21 +47,20 @@ test('tablet List is smaller, minimizable and keeps primary CTA visible',()=>{
   assert.match(css,/body\.list-panel-open #material-lists\{margin-bottom:58dvh\}/);
 });
 
-test('kiosk header maximizes welcome text and uses text-only List action',()=>{
-  assert.match(css,/\.navbar \.nav\{[^}]*container-type:inline-size/);
-  assert.match(css,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(16px,7cqi,36px\)/);
-  assert.match(css,/\.kiosk-list-action>svg\{display:none!important\}/);
-  assert.match(css,/\.kiosk-list-label\{[^}]*font-size:clamp\(1\.22rem,3\.5vw,1\.75rem\)/);
-  assert.match(css,/\.kiosk-back-action svg\{[^}]*width:78%!important[^}]*height:78%!important/);
+test('kiosk header maximizes welcome text and uses equal nav controls',()=>{
+  assert.match(navCss,/--kiosk-nav-control:clamp\(58px,9vw,72px\)/);
+  assert.match(navCss,/\.kiosk-nav-action\{[^}]*width:var\(--kiosk-nav-control\)!important[^}]*height:var\(--kiosk-nav-control\)!important/);
+  assert.match(navCss,/\.kiosk-list-action svg\{display:none!important\}/);
+  assert.match(navCss,/\.kiosk-back-action svg\{[^}]*width:72%!important[^}]*height:72%!important/);
+  assert.match(navCss,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(15px,8\.2cqi,36px\)!important/);
 });
 
-test('List badge scales proportionally and is optically centered',()=>{
-  const badgeBlocks=[...css.matchAll(/\.kiosk-list-badge\{([^}]*)\}/g)].map(match=>match[1]);
-  const badge=badgeBlocks.at(-1)||'';
-  assert.match(badge,/--badge-size:clamp\(31px,4\.7vw,40px\)/);
-  assert.match(badge,/padding:clamp\(1px,\.18vw,2px\) 0 0!important/);
-  assert.match(badge,/font-size:clamp\(\.86rem,1\.9vw,1\.08rem\)/);
-  assert.match(css,/\.kiosk-list-badge\{[^}]*display:grid[^}]*place-items:center/);
+test('List badge scales proportionally and centers native text',()=>{
+  assert.match(navCss,/\.kiosk-list-badge\{[^}]*--badge-size:clamp\(30px,4\.8vw,40px\)!important/);
+  assert.match(navCss,/\.kiosk-list-badge\{[^}]*display:grid!important[^}]*place-items:center!important/);
+  assert.match(navCss,/padding:\.08em 0 0!important/);
+  assert.match(navCss,/line-height:1!important/);
+  assert.match(navCss,/\.kiosk-list-badge::before,\.kiosk-list-badge::after\{content:none!important/);
 });
 
 test('material selector keeps three cards per row including tablet',()=>{
