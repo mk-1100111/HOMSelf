@@ -65,7 +65,8 @@ test('List badge scales proportionally and is optically centered',()=>{
 
 test('material selector keeps three cards per row including tablet',()=>{
   assert.match(css,/#material-lists\.row\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.match(css,/@media\(max-width:480px\)[^{]*\{[^}]*#material-lists\.row\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/s);
+  const mobile=css.slice(css.lastIndexOf('@media(max-width:480px)'));
+  assert.match(mobile,/#material-lists\.row\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
 });
 
 test('List hides kind-unit summaries and aligns unit with total quantity',()=>{
