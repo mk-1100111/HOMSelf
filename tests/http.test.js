@@ -31,6 +31,15 @@ test('restores last stock snapshot before Worker starts',async()=>{
     assert.equal(item.available_stock,77);
     assert.equal(item.stock_synced_at,syncedAt);
     assert.equal(body.inventory_sync.snapshot_restored,true);
+
+    const adminResponse=await fetch(base+'/api/admin/catalog-management',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}});
+    assert.equal(adminResponse.status,200);
+    const adminBody=await adminResponse.json();
+    const adminItem=adminBody.materials.find(x=>x.material_code==='10000060837');
+    assert.equal(adminItem.stock_quantity,item.stock_quantity);
+    assert.equal(adminItem.available_stock,item.available_stock);
+    assert.equal(adminItem.stock_synced_at,item.stock_synced_at);
+    assert.equal(adminItem.specification,item.specification);
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
