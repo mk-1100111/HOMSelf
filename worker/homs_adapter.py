@@ -261,7 +261,6 @@ class HomsAdapter:
         rows_xpath='//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr'
         header_xpath='//*[@id="wrap"]/div[3]/div[2]/table/thead/tr/th[1]'
 
-        # HOMS는 조회 시 결과 영역과 표시건수 select를 다시 그리므로 먼저 조회한 뒤 90개 보기를 적용한다.
         self._select_visible('//*[@id="srcDisplayYn"]','전체')
         time.sleep(0.5)
         self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
@@ -279,7 +278,6 @@ class HomsAdapter:
         print('재고조회 1차 결과:',initial_count,'건 / 90개 보기 적용',flush=True)
 
         self._select_page_size_90()
-        # change 이벤트로 목록이 다시 그려질 수 있으므로 결과가 안정될 때까지 대기한다.
         stable={'count':-1,'same':0}
         def rows_stable(_):
             count=self.driver.execute_script(
@@ -361,8 +359,10 @@ class HomsAdapter:
             raise MissingStockResult(f'HOMS 조회 결과 없음: {item["material_code"]}') from error
 
         row = checkbox.find_element(self.By.XPATH, './ancestor::tr[1]')
-        if item['material_code'] not in (row.text or ''):
-            raise RuntimeError('조회 결과가 요청 상품코드와 일치하지 않습니다.')
+        row_text = row.text or ''
+        code_pattern = r'(?<![A-Za-z0-9_-])' + re.escape(str(item['material_code'])) + r'(?![A-Za-z0-9_-])'
+        if not re.search(code_pattern, row_text):
+            raise RuntimeError('조회 결과가 요청 상품코드와 정확히 일치하지 않습니다.')
         if not checkbox.is_selected():checkbox.click()
         if not checkbox.is_selected():raise RuntimeError('조회 상품을 선택하지 못했습니다.')
 
