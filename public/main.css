@@ -1,11 +1,10 @@
 body {
     font-family: 'Jua', sans-serif;
     font-weight: 400;
-    font-size: 150%;
+    font-size: clamp(18px, 2.7vw, 24px);
     font-style: normal;
     margin: 0 auto;
-    max-width: 799px; 
-
+    max-width: 799px;
 }
 
 .container-fluid {
@@ -13,34 +12,10 @@ body {
     margin: 0 auto;
 }
 
-
-#modal-cart-list{
-    font-size: 120%;
-}
-
-.navbar {
-    height: 8%;
-}
-
-.navbar-brand,
-.navbar-toggler-icon,
-.navbar-brand,
-.nav-item,
-.btn {
-    font-size: 120%;
-}
-
-#manager-lists {
-    margin-top: 15%;
-    margin-left: 0.5%;
-    margin-right: 0.5%;
-}
-
-.modal-content {
-    position: fixed; 
-    top: 35%; /* 화면의 50% 지점 */
-    left: 50%; /* 화면의 50% 지점 */
-    transform: translate(-50%, -50%); /* 가로/세로 중심 이동 */
-    margin: 0; /* 여백 제거 */
-    z-index: 1050; /* 다른 요소 위에 표시 */
-}
+#modal-cart-list{font-size:clamp(1rem,2vw,1.2rem)}
+.navbar{height:8%}
+.navbar-brand,.navbar-toggler-icon,.nav-item,.btn{font-size:clamp(1.05rem,2.2vw,1.35rem);white-space:nowrap}
+#manager-lists{margin-top:15%;margin-left:.5%;margin-right:.5%}
+#manager-lists .card-title{font-size:clamp(1.05rem,2.3vw,1.4rem)!important;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#manager-lists .btn{font-size:clamp(.95rem,1.9vw,1.18rem);white-space:nowrap}
+.modal-content{position:fixed;top:35%;left:50%;transform:translate(-50%,-50%);margin:0;z-index:1050}
