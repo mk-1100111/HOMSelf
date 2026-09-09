@@ -135,3 +135,31 @@ body.list-panel-open.list-panel-minimized #material-lists{margin-bottom:190px}
  .cart-product-main{grid-template-columns:66px minmax(0,1fr)}
  .cart-product-thumb{width:66px}
 }
+
+/* Fluid typography: kiosk + List */
+:root{--fs-xs:clamp(.72rem,1.15vw,.9rem);--fs-sm:clamp(.82rem,1.45vw,1.02rem);--fs-md:clamp(.96rem,1.9vw,1.18rem);--fs-lg:clamp(1.08rem,2.35vw,1.42rem);--fs-xl:clamp(1.28rem,3vw,1.72rem);--fs-2xl:clamp(1.5rem,3.7vw,2rem)}
+body{font-size:clamp(18px,2.7vw,24px)}
+.navbar #welcome-ms{font-size:var(--fs-xl);line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navbar-brand,.nav-item,.btn{font-size:var(--fs-lg)}
+.kiosk-list-label{font-size:var(--fs-md)}
+.kiosk-list-badge{min-width:clamp(34px,5vw,42px);height:clamp(34px,5vw,42px);font-size:clamp(.9rem,2vw,1.1rem)}
+.material-card .card-title{font-size:var(--fs-lg)!important;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.material-stock-badge{font-size:var(--fs-sm);min-width:clamp(44px,7vw,58px)}
+#offcanvasBottomLabel{font-size:var(--fs-2xl)}
+.premium-cart-head-summary{font-size:var(--fs-sm);white-space:nowrap}
+.cart-product-name{font-size:var(--fs-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-product-meta{font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.cart-product-total{font-size:var(--fs-sm);white-space:nowrap}
+.cart-remove{font-size:var(--fs-sm);white-space:nowrap}
+.cart-stepper button{font-size:clamp(1.3rem,3vw,1.65rem)}
+.cart-stepper-value b{font-size:var(--fs-md)}
+.cart-stepper-value small{font-size:var(--fs-xs)}
+.premium-cart-footer-summary{font-size:var(--fs-sm)}
+.premium-cart-footer-summary strong{font-size:var(--fs-md)}
+.premium-cart-review{font-size:var(--fs-xl);white-space:nowrap}
+.premium-cart-review-count{font-size:var(--fs-md);min-width:clamp(38px,5.5vw,46px);height:clamp(38px,5.5vw,46px)}
+.modal-cart-product-name{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-cart-product-meta{font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-cart-product-qty{font-size:var(--fs-md)}
+#staticBackdrop .modal-title{font-size:var(--fs-xl)!important;white-space:nowrap}
+#staticBackdrop .modal-footer .btn{font-size:var(--fs-md);white-space:nowrap}
