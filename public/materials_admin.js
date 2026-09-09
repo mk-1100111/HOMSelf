@@ -42,12 +42,18 @@ async function compress(file){
   return data;
 }
 
+function persistenceText(persistence,success='저장 완료'){
+  if(!persistence)return success;
+  if(persistence.pending)return persistence.error
+    ?'서버 반영 완료 · GitHub 직접 저장 실패, Worker 재시도 대기: '+persistence.error
+    :'서버 반영 완료 · GitHub 영구 저장 재시도 대기 중';
+  return persistence.commit?success+' · GitHub 영구 저장 완료':success;
+}
+
 async function patch(code,patchData){
   $('status').textContent='저장 중...';
   const d=await api('catalog-management',{type:'material',key:code,patch:patchData});
-  $('status').textContent=d.persistence&&d.persistence.pending
-    ?'서버 반영 완료 · 회사 PC가 GitHub 영구 저장을 처리 중입니다.'
-    :'저장 완료';
+  $('status').textContent=persistenceText(d.persistence);
   await load();
 }
 
@@ -156,19 +162,23 @@ function card(item){
 
 function render(){
   const q=$('search').value.trim().toLowerCase();
-  $('list').replaceChildren(...rows.filter(x=>{
+  const filtered=rows.filter(x=>{
     if(!q)return true;
     return String(x.material_name||'').toLowerCase().includes(q)
       ||String(x.display_name||'').toLowerCase().includes(q)
       ||String(x.material_code||'').toLowerCase().includes(q);
-  }).map(card));
+  });
+  filtered.sort((a,b)=>(a.visible===false)-(b.visible===false));
+  $('list').replaceChildren(...filtered.map(card));
 }
 
 async function load(){
   const d=await api('catalog-management');
   rows=d.materials||[];
   if(window.homselfAdminNavShow)window.homselfAdminNavShow();
-  $('status').textContent=d.persistence&&d.persistence.pending?'GitHub 영구 저장 대기 중':'총 '+rows.length+'개 부자재';
+  $('status').textContent=d.persistence&&d.persistence.pending
+    ?persistenceText(d.persistence,'총 '+rows.length+'개 부자재')
+    :'총 '+rows.length+'개 부자재';
   render();
 }
 
