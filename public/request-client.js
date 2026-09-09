@@ -3,6 +3,7 @@ const pendingKey='homself.pending.v1';
 const kioskPinOk=token=>/^\d{4}$/.test(token)||token.length>=32;
 const kioskMaterialLabel=material=>String(material&&(material.display_name||material.material_name)||'').trim();
 const kioskMaterialByCode=code=>(material_list||[]).find(item=>String(item.material_code)===String(code));
+const cssEscape=value=>typeof CSS!=='undefined'&&typeof CSS.escape==='function'?CSS.escape(String(value)):String(value).replace(/[^a-zA-Z0-9_-]/g,'\\$&');
 
 function upgradeKioskNav(){
   if(typeof document==='undefined')return;
@@ -13,12 +14,30 @@ function upgradeKioskNav(){
     back.setAttribute('aria-label','매니저 선택으로 돌아가기');
     back.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/><path d="M9 12h10"/></svg>';
   }
+  if(typeof document.querySelector!=='function')return;
   const listButton=document.querySelector('[data-bs-target="#offcanvasBottom"]');
   if(listButton&&listButton.dataset.listNavReady!=='1'){
     listButton.dataset.listNavReady='1';
     listButton.classList.add('kiosk-nav-action','kiosk-list-action');
     listButton.setAttribute('aria-label','List 열기');
     listButton.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h11M8 12h11M8 18h11"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span class="kiosk-list-label">List</span><span id="cart-badge" class="kiosk-list-badge"></span>';
+  }
+}
+
+function setListMinimized(minimized){
+  if(typeof document==='undefined')return;
+  const drawer=document.getElementById('offcanvasBottom');
+  if(!drawer)return;
+  drawer.classList.toggle('is-minimized',!!minimized);
+  if(document.body){
+    document.body.classList.toggle('list-panel-minimized',!!minimized);
+    if(drawer.classList.contains('show'))document.body.classList.add('list-panel-open');
+  }
+  const button=drawer.querySelector('.list-minimize-btn');
+  if(button){
+    button.setAttribute('aria-label',minimized?'List 펼치기':'List 내리기');
+    button.setAttribute('aria-expanded',minimized?'false':'true');
+    button.title=minimized?'List 펼치기':'List 내리기';
   }
 }
 
@@ -32,7 +51,9 @@ function ensurePremiumCartShell(){
 
   const header=drawer.querySelector('.offcanvas-header');
   if(header){
-    header.innerHTML='<div class="premium-cart-heading"><span class="premium-cart-eyebrow">MATERIAL REQUEST</span><h4 class="offcanvas-title" id="offcanvasBottomLabel">List</h4><span class="premium-cart-head-summary" id="cart-head-summary">선택한 부자재가 없습니다</span></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="List 닫기"></button>';
+    header.innerHTML='<div class="premium-cart-heading"><h4 class="offcanvas-title" id="offcanvasBottomLabel">List</h4><span class="premium-cart-head-summary" id="cart-head-summary">선택한 부자재가 없습니다</span></div><button type="button" class="list-minimize-btn" aria-label="List 내리기" aria-expanded="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>';
+    const minimize=header.querySelector('.list-minimize-btn');
+    if(minimize)minimize.onclick=()=>setListMinimized(!drawer.classList.contains('is-minimized'));
   }
 
   const body=drawer.querySelector('.offcanvas-body');
@@ -40,8 +61,13 @@ function ensurePremiumCartShell(){
     body.innerHTML='<div class="premium-cart-scroll" id="premium-cart-scroll"><div class="premium-cart-empty" id="cart-empty"><div><div class="premium-cart-empty-icon">≡</div><strong>아직 선택한 부자재가 없습니다</strong><span>필요한 부자재 카드를 터치하면<br>List에 바로 추가됩니다.</span></div></div><div id="cart-items" class="cart-items"></div></div><div class="premium-cart-footer"><div class="premium-cart-footer-summary"><span>선택한 품목</span><strong id="cart-footer-summary">0종 · 0단위</strong></div><button type="button" id="cart-review-btn" class="premium-cart-review" data-bs-toggle="modal" data-bs-target="#staticBackdrop" disabled><span>선택 내용 확인</span><span class="premium-cart-review-count" id="cart-review-count">0</span></button></div>';
   }
 
-  drawer.addEventListener('shown.bs.offcanvas',()=>document.body.classList.add('list-panel-open'));
-  drawer.addEventListener('hidden.bs.offcanvas',()=>document.body.classList.remove('list-panel-open'));
+  drawer.addEventListener('shown.bs.offcanvas',()=>{
+    if(document.body)document.body.classList.add('list-panel-open');
+  });
+  drawer.addEventListener('hidden.bs.offcanvas',()=>{
+    if(document.body)document.body.classList.remove('list-panel-open','list-panel-minimized');
+    drawer.classList.remove('is-minimized');
+  });
 
   const modal=document.getElementById('staticBackdrop');
   if(modal){
@@ -106,14 +132,6 @@ function createCartProduct(code,material,count){
   name.textContent=kioskMaterialLabel(material)||material.material_name||code;
   info.appendChild(name);
 
-  const specification=String(material.specification||'').trim();
-  if(specification){
-    const spec=document.createElement('div');
-    spec.className='cart-product-spec';
-    spec.textContent=specification;
-    info.appendChild(spec);
-  }
-
   const meta=document.createElement('div');
   meta.className='cart-product-meta';
   const codeMeta=document.createElement('span');
@@ -176,8 +194,7 @@ function createModalCartProduct(material,count){
   name.textContent=kioskMaterialLabel(material)||material.material_name||material.material_code;
   const meta=document.createElement('div');
   meta.className='modal-cart-product-meta';
-  const specification=String(material.specification||'').trim();
-  meta.textContent=(specification?specification+' · ':'')+'불출단위 '+material.material_unit.toLocaleString('ko-KR')+'개';
+  meta.textContent='불출단위 '+material.material_unit.toLocaleString('ko-KR')+'개';
   text.append(name,meta);
   const qty=document.createElement('strong');
   qty.className='modal-cart-product-qty';
@@ -209,7 +226,7 @@ function reconcileListRows(container,entries,modal=false){
     if(child.dataset&&child.dataset.materialCode&&!liveCodes.has(String(child.dataset.materialCode)))child.remove();
   }
   for(const entry of entries){
-    let row=container.querySelector(`[data-material-code="${CSS.escape(String(entry.code))}"]`);
+    let row=container.querySelector(`[data-material-code="${cssEscape(entry.code)}"]`);
     if(!row){
       row=modal?createModalCartProduct(entry.material,entry.count):createCartProduct(entry.code,entry.material,entry.count);
       container.appendChild(row);
@@ -227,7 +244,7 @@ function updateListSummary(entries){
   const review=document.getElementById('cart-review-btn');
   const reviewCount=document.getElementById('cart-review-count');
   if(empty)empty.hidden=kinds>0;
-  if(headSummary)headSummary.textContent=kinds?`${kinds}종 · 선택 ${units}단위`:'선택한 부자재가 없습니다';
+  if(headSummary)headSummary.textContent=kinds?`${kinds}종 · ${units}단위`:'선택한 부자재가 없습니다';
   if(footerSummary)footerSummary.textContent=`${kinds}종 · ${units}단위`;
   if(review)review.disabled=kinds<1;
   if(reviewCount)reviewCount.textContent=String(kinds);
@@ -237,7 +254,8 @@ function updateListSummary(entries){
 function focusListItem(code,highlight=true){
   if(!code)return;
   const run=()=>{
-    const row=document.querySelector(`#cart-items [data-material-code="${CSS.escape(String(code))}"]`);
+    if(typeof document.querySelector!=='function')return;
+    const row=document.querySelector(`#cart-items [data-material-code="${cssEscape(code)}"]`);
     if(!row)return;
     if(highlight){
       row.classList.remove('cart-product-added');
@@ -248,8 +266,9 @@ function focusListItem(code,highlight=true){
     row.scrollIntoView({behavior:'smooth',block:'nearest'});
   };
   const drawer=document.getElementById('offcanvasBottom');
-  if(drawer&&drawer.classList.contains('show'))requestAnimationFrame(run);
-  else if(drawer)drawer.addEventListener('shown.bs.offcanvas',run,{once:true});
+  if(drawer&&drawer.classList.contains('show')){
+    if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else run();
+  }else if(drawer)drawer.addEventListener('shown.bs.offcanvas',run,{once:true});
 }
 
 if(typeof renderMaterialCard==='function'){
@@ -276,6 +295,8 @@ if(typeof addToCart==='function'){
     if(!material)return;
     const key=String(material.material_code);
     cartQuantities[key]=(cartQuantities[key]||0)+1;
+    const drawer=document.getElementById('offcanvasBottom');
+    if(drawer&&drawer.classList.contains('is-minimized'))setListMinimized(false);
     updateCart({focusCode:key,highlight:true});
   };
 }
