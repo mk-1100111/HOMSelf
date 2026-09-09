@@ -8,6 +8,7 @@ const source=fs.readFileSync(path.join(__dirname,'..','public','request-client.j
 const css=fs.readFileSync(path.join(__dirname,'..','public','material_list.css'),'utf8');
 const navCss=fs.readFileSync(path.join(__dirname,'..','public','kiosk_nav_tuning.css'),'utf8');
 const mainCss=fs.readFileSync(path.join(__dirname,'..','public','main.css'),'utf8');
+const mainView=fs.readFileSync(path.join(__dirname,'..','views','main.ejs'),'utf8');
 
 test('kiosk List client parses and keeps request safety flow',()=>{
   assert.doesNotThrow(()=>new vm.Script(source,{filename:'public/request-client.js'}));
@@ -55,10 +56,12 @@ test('kiosk header maximizes welcome text and uses equal nav controls',()=>{
   assert.match(navCss,/\.navbar #welcome-ms\{[^}]*font-size:clamp\(15px,8\.2cqi,36px\)!important/);
 });
 
-test('main admin menu control matches kiosk header control proportions',()=>{
-  assert.match(mainCss,/--kiosk-header-control:clamp\(58px,9vw,72px\)/);
-  assert.match(mainCss,/\.navbar-toggler\{[^}]*width:var\(--kiosk-header-control\)!important[^}]*height:var\(--kiosk-header-control\)!important/);
-  assert.match(mainCss,/\.navbar-toggler-icon\{[^}]*width:72%!important[^}]*height:72%!important/);
+test('main header uses proportional home icon and fills prompt width',()=>{
+  assert.match(mainView,/id="homebt"[^>]*aria-label="홈"[^>]*><svg/);
+  assert.doesNotMatch(mainView,/id="homebt"[^>]*>HOMSelf<\/a>/);
+  assert.match(mainCss,/#homebt\{[^}]*width:var\(--kiosk-header-control\)[^}]*height:var\(--kiosk-header-control\)/);
+  assert.match(mainCss,/#homebt svg\{[^}]*width:72%[^}]*height:72%/);
+  assert.match(mainCss,/\.kiosk-main-prompt\{[^}]*font-size:clamp\(15px,8\.2cqi,36px\)[^}]*white-space:nowrap[^}]*overflow:visible/);
 });
 
 test('List and review badges share proportional sizing and empty List badge is hidden',()=>{
@@ -79,6 +82,12 @@ test('material selector keeps three cards per row including tablet',()=>{
   assert.match(css,/#material-lists\.row\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   const mobile=css.slice(css.lastIndexOf('@media(max-width:480px)'));
   assert.match(mobile,/#material-lists\.row\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+});
+
+test('material card names remain one proportional unclipped line',()=>{
+  assert.match(navCss,/\.material-card \.card-body\{[^}]*container-type:inline-size/);
+  assert.match(navCss,/\.material-card \.card-title\{[^}]*font-size:clamp\(\.48rem,4\.9cqi,1\.08rem\)!important/);
+  assert.match(navCss,/\.material-card \.card-title\{[^}]*white-space:nowrap!important[^}]*overflow:visible!important[^}]*text-overflow:clip!important/);
 });
 
 test('List hides kind-unit summaries and aligns unit with total quantity',()=>{
