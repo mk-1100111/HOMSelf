@@ -12,6 +12,7 @@ const managersAdminView=fs.readFileSync(path.join(__dirname,'..','views','manage
 const materialsAdminView=fs.readFileSync(path.join(__dirname,'..','views','materials_admin.ejs'),'utf8');
 const adminCss=fs.readFileSync(path.join(__dirname,'..','public','admin.css'),'utf8');
 const adminManageCss=fs.readFileSync(path.join(__dirname,'..','public','admin_manage.css'),'utf8');
+const adminManageTuningCss=fs.readFileSync(path.join(__dirname,'..','public','admin_manage_tuning.css'),'utf8');
 const adminNavCss=fs.readFileSync(path.join(__dirname,'..','public','admin_nav.css'),'utf8');
 const adminLoginCss=fs.readFileSync(path.join(__dirname,'..','public','admin_login.css'),'utf8');
 
@@ -72,9 +73,19 @@ test('manager and material admin always keep three proportional columns',()=>{
   assert.match(adminManageCss,/\.manager-image-wrap\{[^}]*aspect-ratio:1\/1/);
 });
 
-test('material admin removes HOMS name explanation labels',()=>{
+test('management counts sit on the right side of each 기준정보 heading',()=>{
+  assert.match(materialsAdminView,/class="manage-title-row"[^>]*><h2>부자재 기준정보<\/h2><strong id="count" class="manage-count">/);
+  assert.match(managersAdminView,/class="manage-title-row"[^>]*><h2>매니저 기준정보<\/h2><strong id="count" class="manage-count">/);
+  assert.match(materialsAdminSource,/\$\('count'\)\.textContent='총 '\+rows\.length\+'개 부자재'/);
+  assert.match(managersAdminSource,/\$\('count'\)\.textContent='총 '\+rows\.length\+'명'/);
+  assert.match(adminManageTuningCss,/\.manage-title-row\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(adminManageTuningCss,/\.manage-count\{[^}]*justify-self:end[^}]*white-space:nowrap/);
+});
+
+test('material admin removes explanatory HOMS naming copy',()=>{
   assert.doesNotMatch(materialsAdminSource,/HOMS 이름:/);
   assert.doesNotMatch(materialsAdminView,/HOMS 이름/);
+  assert.doesNotMatch(materialsAdminView,/원본 자재명은 유지/);
   assert.match(materialsAdminSource,/원본 이름 사용/);
 });
 
