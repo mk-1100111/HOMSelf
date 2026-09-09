@@ -191,9 +191,8 @@ async function load(){
   const d=await api('catalog-management');
   rows=d.materials||[];
   if(window.homselfAdminNavShow)window.homselfAdminNavShow();
-  $('status').textContent=d.persistence&&d.persistence.pending
-    ?persistenceText(d.persistence,'총 '+rows.length+'개 부자재')
-    :'총 '+rows.length+'개 부자재';
+  $('count').textContent='총 '+rows.length+'개 부자재';
+  if(d.persistence&&d.persistence.pending)$('status').textContent=persistenceText(d.persistence);
   render();
 }
 
