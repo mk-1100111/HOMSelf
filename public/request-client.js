@@ -1,24 +1,165 @@
 /* A lost response MUST retry the same key AND payload, never create a new request. */
-const pendingKey = 'homself.pending.v1';
-const kioskPinOk = token => /^\d{4}$/.test(token) || token.length >= 32;
-const kioskMaterialLabel = material => String(material && (material.display_name || material.material_name) || '').trim();
-const kioskMaterialByCode = code => (material_list || []).find(item => String(item.material_code) === String(code));
+const pendingKey='homself.pending.v1';
+const kioskPinOk=token=>/^\d{4}$/.test(token)||token.length>=32;
+const kioskMaterialLabel=material=>String(material&&(material.display_name||material.material_name)||'').trim();
+const kioskMaterialByCode=code=>(material_list||[]).find(item=>String(item.material_code)===String(code));
+let lastAddedCartCode='';
+
+function ensurePremiumCartShell(){
+  if(typeof document==='undefined')return;
+  const drawer=document.getElementById('offcanvasBottom');
+  if(!drawer||drawer.dataset.premiumCartReady==='1')return;
+  drawer.dataset.premiumCartReady='1';
+  drawer.classList.add('premium-cart-drawer');
+
+  const header=drawer.querySelector('.offcanvas-header');
+  if(header){
+    header.innerHTML='<div class="premium-cart-heading"><span class="premium-cart-eyebrow">REQUEST CART</span><h4 class="offcanvas-title" id="offcanvasBottomLabel">장바구니</h4><span class="premium-cart-head-summary" id="cart-head-summary">선택한 부자재가 없습니다</span></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="장바구니 닫기"></button>';
+  }
+
+  const body=drawer.querySelector('.offcanvas-body');
+  if(body){
+    body.innerHTML='<div class="premium-cart-scroll" id="premium-cart-scroll"><div class="premium-cart-empty" id="cart-empty"><div><div class="premium-cart-empty-icon">🛍</div><strong>아직 담긴 부자재가 없습니다</strong><span>필요한 부자재 카드를 터치하면<br>여기에 바로 담깁니다.</span></div></div><div id="cart-items" class="cart-items"></div></div><div class="premium-cart-footer"><div class="premium-cart-footer-summary"><span>선택한 품목</span><strong id="cart-footer-summary">0종 · 0단위</strong></div><button type="button" id="cart-review-btn" class="premium-cart-review" data-bs-toggle="modal" data-bs-target="#staticBackdrop" disabled>선택 내용 확인 <span class="premium-cart-review-count" id="cart-review-count">0</span></button></div>';
+  }
+
+  const modal=document.getElementById('staticBackdrop');
+  if(modal){
+    modal.classList.add('premium-confirm-modal');
+    const cancel=modal.querySelector('.modal-footer .btn-secondary');
+    const send=modal.querySelector('#send-request');
+    if(cancel)cancel.textContent='계속 담기';
+    if(send)send.textContent='불출 요청하기';
+  }
+}
+
+function materialImageCandidates(material){
+  if(material&&material.image_data)return [material.image_data];
+  const code=encodeURIComponent(material&&material.material_code||'');
+  const base='/public/static/img/material_list/'+code;
+  return [base+'.jpg',base+'.png',base+'.jpeg',base+'.webp'];
+}
+
+function createCartThumbnail(material){
+  const wrap=document.createElement('div');
+  wrap.className='cart-product-thumb';
+  const fallback=document.createElement('div');
+  fallback.className='cart-product-thumb-fallback';
+  fallback.textContent='이미지 준비중';
+  fallback.hidden=true;
+  const img=document.createElement('img');
+  img.alt=kioskMaterialLabel(material)||'부자재';
+  const candidates=materialImageCandidates(material);
+  let index=0;
+  img.onload=()=>{fallback.hidden=true;img.hidden=false;};
+  img.onerror=()=>{
+    index+=1;
+    if(index<candidates.length)img.src=candidates[index];
+    else{img.hidden=true;fallback.hidden=false;}
+  };
+  img.src=candidates[0];
+  wrap.append(img,fallback);
+  return wrap;
+}
+
+function createCartProduct(code,material,count){
+  const article=document.createElement('article');
+  article.className='cart-item cart-product'+(String(code)===lastAddedCartCode?' cart-product-added':'');
+  article.dataset.materialCode=String(material.material_code);
+
+  const main=document.createElement('div');
+  main.className='cart-product-main';
+  main.appendChild(createCartThumbnail(material));
+
+  const info=document.createElement('div');
+  info.className='cart-product-info';
+  const name=document.createElement('h5');
+  name.className='cart-product-name';
+  name.textContent=kioskMaterialLabel(material)||material.material_name||code;
+  info.appendChild(name);
+
+  const specification=String(material.specification||'').trim();
+  if(specification){
+    const spec=document.createElement('div');
+    spec.className='cart-product-spec';
+    spec.textContent=specification;
+    info.appendChild(spec);
+  }
+
+  const meta=document.createElement('div');
+  meta.className='cart-product-meta';
+  const codeMeta=document.createElement('span');
+  codeMeta.textContent='상품코드 '+material.material_code;
+  const unitMeta=document.createElement('span');
+  unitMeta.textContent='불출단위 '+material.material_unit.toLocaleString('ko-KR')+'개';
+  meta.append(codeMeta,unitMeta);
+  info.appendChild(meta);
+
+  const total=document.createElement('div');
+  total.className='cart-product-total';
+  total.textContent='총 '+(count*material.material_unit).toLocaleString('ko-KR')+'개';
+  info.appendChild(total);
+  main.appendChild(info);
+
+  const actions=document.createElement('div');
+  actions.className='cart-product-actions';
+  const remove=document.createElement('button');
+  remove.type='button';
+  remove.className='cart-remove';
+  remove.textContent='삭제';
+  remove.onclick=event=>{event.stopPropagation();removeFromCart(code);};
+
+  const stepper=document.createElement('div');
+  stepper.className='cart-stepper';
+  const minus=document.createElement('button');
+  minus.type='button';minus.setAttribute('aria-label','수량 줄이기');minus.textContent='−';
+  minus.onclick=event=>{event.stopPropagation();cartQuantities[code]=Math.max(0,cartQuantities[code]-1);if(cartQuantities[code]===0)delete cartQuantities[code];updateCart();};
+  const value=document.createElement('span');
+  value.className='cart-stepper-value';
+  const valueNumber=document.createElement('b');valueNumber.textContent=String(count);
+  const valueLabel=document.createElement('small');valueLabel.textContent='단위';
+  value.append(valueNumber,valueLabel);
+  const plus=document.createElement('button');
+  plus.type='button';plus.setAttribute('aria-label','수량 늘리기');plus.textContent='+';
+  plus.onclick=event=>{event.stopPropagation();cartQuantities[code]+=1;updateCart();};
+  stepper.append(minus,value,plus);
+  actions.append(remove,stepper);
+  article.append(main,actions);
+  return article;
+}
+
+function createModalCartProduct(material,count){
+  const row=document.createElement('div');
+  row.className='modal-cart-product';
+  row.dataset.materialCode=String(material.material_code);
+  const text=document.createElement('div');
+  text.style.minWidth='0';
+  const name=document.createElement('div');
+  name.className='modal-cart-product-name';
+  name.textContent=kioskMaterialLabel(material)||material.material_name||material.material_code;
+  const meta=document.createElement('div');
+  meta.className='modal-cart-product-meta';
+  const specification=String(material.specification||'').trim();
+  meta.textContent=(specification?specification+' · ':'')+'불출단위 '+material.material_unit.toLocaleString('ko-KR')+'개';
+  text.append(name,meta);
+  const qty=document.createElement('strong');
+  qty.className='modal-cart-product-qty';
+  qty.textContent=(count*material.material_unit).toLocaleString('ko-KR')+'개';
+  row.append(text,qty);
+  return row;
+}
 
 if(typeof renderMaterialCard==='function'){
   const baseRenderMaterialCard=renderMaterialCard;
   renderMaterialCard=function(material){
-    if(material.visible===false) return;
-    if(Number.isFinite(material.available_stock)&&material.available_stock<=0) return;
+    if(material.visible===false)return;
+    if(Number.isFinite(material.available_stock)&&material.available_stock<=0)return;
     baseRenderMaterialCard(material);
     const last=document.getElementById('material-lists')?.lastElementChild;
     const card=last?.querySelector('.material-card');
     const label=kioskMaterialLabel(material);
     const title=last?.querySelector('.card-title');
     const img=last?.querySelector('.material-image');
-    if(card){
-      card.dataset.materialCode=String(material.material_code);
-      card.onclick=()=>addToCart(material.material_code);
-    }
+    if(card){card.dataset.materialCode=String(material.material_code);card.onclick=()=>addToCart(material.material_code);}
     if(title&&label)title.textContent=label;
     if(img&&label)img.alt=label;
     if(material.image_data&&img)img.src=material.image_data;
@@ -30,93 +171,59 @@ if(typeof addToCart==='function'){
     const material=kioskMaterialByCode(code);
     if(!material)return;
     const key=String(material.material_code);
+    lastAddedCartCode=key;
     cartQuantities[key]=(cartQuantities[key]||0)+1;
     updateCart();
   };
 }
 
 if(typeof removeFromCart==='function'){
-  removeFromCart=function(code){
-    delete cartQuantities[String(code)];
-    updateCart();
-  };
+  removeFromCart=function(code){delete cartQuantities[String(code)];updateCart();};
 }
 
 if(typeof updateCart==='function'){
   updateCart=function(){
+    ensurePremiumCartShell();
     const cartItemsElement=document.getElementById('cart-items');
     const modalCartListElement=document.getElementById('modal-cart-list');
     if(!cartItemsElement||!modalCartListElement)return;
-    cartItemsElement.innerHTML='';
-    cartItemsElement.style.display='block';
-    modalCartListElement.innerHTML='';
+    cartItemsElement.replaceChildren();
+    modalCartListElement.replaceChildren();
 
-    const codes=Object.keys(cartQuantities||{});
-    for(const [index,code] of codes.entries()){
+    const valid=[];
+    for(const code of Object.keys(cartQuantities||{})){
       const material=kioskMaterialByCode(code);
-      if(!material){delete cartQuantities[code];continue;}
-      const count=cartQuantities[code];
-      const label=kioskMaterialLabel(material)||material.material_name||code;
-      const quantity=count*material.material_unit;
-
-      const cartItemDiv=document.createElement('div');
-      cartItemDiv.classList.add('cart-item');
-      cartItemDiv.dataset.materialCode=String(material.material_code);
-
-      const buttonContainer=document.createElement('div');
-      buttonContainer.classList.add('button-container');
-
-      const delButton=document.createElement('button');
-      delButton.innerText='삭제';
-      delButton.classList.add('btn','btn-danger');
-      delButton.style.cursor='pointer';
-      delButton.style.fontSize='40%';
-      delButton.onclick=()=>removeFromCart(code);
-
-      const plusButton=document.createElement('div');
-      plusButton.innerHTML=plusIcon;
-      plusButton.classList.add('cart-button');
-      plusButton.style.cursor='pointer';
-      plusButton.onclick=()=>{cartQuantities[code]++;updateCart();};
-
-      const minusButton=document.createElement('div');
-      minusButton.innerHTML=minusIcon;
-      minusButton.classList.add('cart-button');
-      minusButton.style.cursor='pointer';
-      minusButton.onclick=()=>{
-        cartQuantities[code]=Math.max(0,cartQuantities[code]-1);
-        if(cartQuantities[code]===0)delete cartQuantities[code];
-        updateCart();
-      };
-
-      const textElement=document.createElement('span');
-      textElement.innerText=label+' x '+quantity;
-      textElement.classList.add('cart-text');
-
-      cartItemDiv.appendChild(delButton);
-      cartItemDiv.appendChild(textElement);
-      buttonContainer.appendChild(plusButton);
-      buttonContainer.appendChild(minusButton);
-      cartItemDiv.appendChild(buttonContainer);
-      cartItemsElement.appendChild(cartItemDiv);
-
-      const modalCartItem=document.createElement('div');
-      modalCartItem.dataset.materialCode=String(material.material_code);
-      modalCartItem.innerText=label+' x '+quantity;
-      modalCartListElement.appendChild(modalCartItem);
-
-      if(index===codes.length-1)cartItemDiv.scrollIntoView({behavior:'smooth'});
+      if(!material||!Number.isSafeInteger(cartQuantities[code])||cartQuantities[code]<1){delete cartQuantities[code];continue;}
+      valid.push({code,material,count:cartQuantities[code]});
     }
 
-    if(typeof bootstrap!=='undefined'&&document.getElementById('offcanvasBottom')){
-      bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('offcanvasBottom')).show();
+    for(const entry of valid){
+      cartItemsElement.appendChild(createCartProduct(entry.code,entry.material,entry.count));
+      modalCartListElement.appendChild(createModalCartProduct(entry.material,entry.count));
     }
+
+    const kinds=valid.length;
+    const units=valid.reduce((sum,entry)=>sum+entry.count,0);
+    const empty=document.getElementById('cart-empty');
+    const headSummary=document.getElementById('cart-head-summary');
+    const footerSummary=document.getElementById('cart-footer-summary');
+    const review=document.getElementById('cart-review-btn');
+    const reviewCount=document.getElementById('cart-review-count');
+    if(empty)empty.hidden=kinds>0;
+    if(headSummary)headSummary.textContent=kinds?`${kinds}종 · 선택 ${units}단위`:'선택한 부자재가 없습니다';
+    if(footerSummary)footerSummary.textContent=`${kinds}종 · ${units}단위`;
+    if(review)review.disabled=kinds<1;
+    if(reviewCount)reviewCount.textContent=String(kinds);
     if(typeof updateBadge==='function')updateBadge();
+
+    const drawer=document.getElementById('offcanvasBottom');
+    if(typeof bootstrap!=='undefined'&&drawer)bootstrap.Offcanvas.getOrCreateInstance(drawer).show();
+    if(lastAddedCartCode)setTimeout(()=>{lastAddedCartCode='';},320);
   };
 }
 
 function showRequestSuccess(){
-  if(!document || typeof document.createElement!=='function' || !document.body || !document.head) return Promise.resolve();
+  if(!document||typeof document.createElement!=='function'||!document.body||!document.head)return Promise.resolve();
   return new Promise(resolve=>{
     let style=document.getElementById('homself-success-style');
     if(!style){
@@ -128,6 +235,10 @@ function showRequestSuccess(){
 }
 
 window.getHomselfCatalog=async function(){try{let token=sessionStorage.getItem('homself.kiosk.token');if(!token)token=prompt('지점 키오스크 PIN 4자리를 입력하세요.');if(!token)return null;token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw Error('키오스크 PIN은 숫자 4자리입니다. 기존 긴 키는 전환 기간에만 사용할 수 있습니다.');}const response=await fetch('/api/catalog',{headers:{Authorization:'Bearer '+token}});if(!response.ok){sessionStorage.removeItem('homself.kiosk.token');throw Error('기준정보 조회 실패. 키오스크 PIN과 서버 설정을 확인하세요.');}sessionStorage.setItem('homself.kiosk.token',token);return await response.json();}catch(error){alert(error.message);return null;}};
+
 async function transmitPending(){const pending=JSON.parse(localStorage.getItem(pendingKey)||'null');if(!pending)return;let token=sessionStorage.getItem('homself.kiosk.token');if(!token){token=prompt('지점 키오스크 PIN 4자리를 입력하세요. 관리자 PIN이 아닙니다.');if(!token)return;}token=token.trim();if(!kioskPinOk(token)){sessionStorage.removeItem('homself.kiosk.token');throw new Error('키오스크 PIN은 숫자 4자리입니다.');}sessionStorage.setItem('homself.kiosk.token',token);const response=await fetch('/api/requests',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'Idempotency-Key':pending.key},body:JSON.stringify(pending.body)});const result=await response.json();if(!response.ok){if(response.status===401||response.status===429)sessionStorage.removeItem('homself.kiosk.token');if(response.status===400)localStorage.removeItem(pendingKey);throw new Error(result.error||'접수 결과를 확인하지 못했습니다.');}localStorage.removeItem(pendingKey);await showRequestSuccess();location.assign('/main');}
+
 window.sendCart=async function(){if(window.homselfSending)return;try{if(!localStorage.getItem(pendingKey)){const items=Object.entries(cartQuantities).map(([code,count])=>{const m=kioskMaterialByCode(code);if(!m)throw new Error('장바구니 자재코드를 기준정보에서 찾지 못했습니다: '+code);return {material_code:String(m.material_code),quantity:count*m.material_unit};});if(!items.length){alert('장바구니가 비어 있습니다.');return;}if(items.some(i=>!Number.isSafeInteger(i.quantity)||i.quantity<1||i.quantity>100000)){alert('수량은 1~100000 범위여야 합니다.');return;}const manager_name=new URLSearchParams(location.search).get('managerName');if(!manager_name){alert('매니저를 다시 선택하세요.');return;}const pending={key:crypto.randomUUID(),body:{manager_name,items}};localStorage.setItem(pendingKey,JSON.stringify(pending));}else if(!confirm('접수 확인이 끝나지 않은 이전 요청을 같은 번호로 재확인합니다. 계속할까요?'))return;window.homselfSending=true;if(typeof timeoutId!=='undefined')clearTimeout(timeoutId);if(typeof countdownInterval!=='undefined')clearInterval(countdownInterval);await transmitPending();}catch(error){alert(error.message+'\n기존 요청은 보존했습니다. 새 요청을 만들지 말고 재확인하세요.');}finally{window.homselfSending=false;}};
+
+ensurePremiumCartShell();
 const notice=document.getElementById('pending-notice');if(notice&&localStorage.getItem(pendingKey)){notice.hidden=false;notice.textContent='접수 확인이 끝나지 않은 요청이 있습니다. 새 요청 전에 확인하세요. ';const button=document.createElement('button');button.textContent='같은 요청 재확인';button.onclick=async()=>{button.disabled=true;try{await transmitPending();}catch(e){alert(e.message);}finally{button.disabled=false;}};notice.append(button);const managerLists=document.getElementById('manager-lists');if(managerLists)managerLists.style.display='none';}
