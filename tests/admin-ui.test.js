@@ -6,8 +6,9 @@ const vm=require('node:vm');
 
 const adminSource=fs.readFileSync(path.join(__dirname,'..','public','admin.js'),'utf8');
 const adminView=fs.readFileSync(path.join(__dirname,'..','views','admin.ejs'),'utf8');
+const materialsAdminSource=fs.readFileSync(path.join(__dirname,'..','public','materials_admin.js'),'utf8');
 
-test('admin request UI script parses and keeps manager grouping client-side',()=>{
+ test('admin request UI script parses and keeps manager grouping client-side',()=>{
   assert.doesNotThrow(()=>new vm.Script(adminSource,{filename:'public/admin.js'}));
   assert.match(adminSource,/function managerGroups\(items\)/);
   assert.match(adminSource,/collapsedRequestManagers/);
@@ -42,4 +43,12 @@ test('request list removes repeated manager column and shows detailed material o
   assert.match(adminSource,/상품코드 /);
   assert.match(adminSource,/불출단위 /);
   assert.match(adminSource,/HOMS명 · /);
+});
+
+test('material admin shows kiosk-equivalent available stock badges',()=>{
+  assert.doesNotThrow(()=>new vm.Script(materialsAdminSource,{filename:'public/materials_admin.js'}));
+  assert.match(materialsAdminSource,/function stockBadge\(item\)/);
+  assert.match(materialsAdminSource,/item\.available_stock\.toLocaleString\('ko-KR'\)/);
+  assert.match(materialsAdminSource,/manage-stock-badge/);
+  assert.match(materialsAdminSource,/키오스크 사용 가능 재고/);
 });
