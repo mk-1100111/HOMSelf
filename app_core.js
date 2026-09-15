@@ -114,6 +114,11 @@ function createApp(config = process.env) {
     snapshot_error:store.setting('inventory_snapshot_error') || '',
     snapshot_restored:store.setting('inventory_snapshot_restored')==='1'
   });
+  const kioskRefreshState=() => {
+    const state=inventoryState();
+    const requestUpdated=Number((store.db.prepare('SELECT COALESCE(MAX(updated_at),0) AS updated_at FROM request_items').get()||{}).updated_at||0);
+    return {...state,inventory_completed_at:state.completed_at,completed_at:Math.max(state.completed_at,requestUpdated)};
+  };
   const requestInventorySync=() => store.tx(() => {
     check(store.paused() && !store.batchActive(),'일괄 불출 중에는 재고 동기화를 시작할 수 없습니다.');
     check(!store.db.prepare("SELECT id FROM request_items WHERE status IN ('claimed','submitting') LIMIT 1").get(),'처리 중인 항목이 있어 재고 동기화를 시작할 수 없습니다.');
@@ -151,9 +156,9 @@ function createApp(config = process.env) {
   const kioskCatalog=() => {
     mergeSyncedMaterials();
     const stockRows=new Map(store.db.prepare('SELECT * FROM material_stock').all().map(row=>[row.material_code,row]));
-    const activeMap=new Map(store.db.prepare(`SELECT material_code,COALESCE(SUM(quantity),0) AS quantity FROM request_items WHERE status IN ('pending','approved','claimed','submitting','needs_review') GROUP BY material_code`).all().map(row=>[row.material_code,row.quantity]));
+    const activeMap=new Map(store.db.prepare(`SELECT material_code,COALESCE(SUM(quantity),0) AS quantity FROM request_items WHERE status IN ('approved','claimed','submitting','needs_review') GROUP BY material_code`).all().map(row=>[row.material_code,row.quantity]));
     const completedMap=new Map(store.db.prepare(`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity FROM request_items i JOIN material_stock s ON s.material_code=i.material_code WHERE i.status='completed' AND i.updated_at>s.synced_at AND i.evidence!='rejected_batch_completed' AND i.evidence NOT LIKE 'HOMS 조회 결과%' GROUP BY i.material_code`).all().map(row=>[row.material_code,row.quantity]));
-    return {...catalog,inventory_sync:inventoryState(),materials:catalog.materials.map(material=>{const stock=stockRows.get(material.material_code);if(!stock)return {...material,available_stock:null,stock_quantity:null,reserved_stock:0,specification:material.specification||''};const reserved=(activeMap.get(material.material_code)||0)+(completedMap.get(material.material_code)||0);return {...material,specification:stock.specification||material.specification||'',stock_quantity:stock.stock_quantity,reserved_stock:reserved,available_stock:stock.stock_quantity,stock_synced_at:stock.synced_at};})};
+    return {...catalog,inventory_sync:kioskRefreshState(),materials:catalog.materials.map(material=>{const stock=stockRows.get(material.material_code);if(!stock)return {...material,available_stock:null,stock_quantity:null,reserved_stock:0,specification:material.specification||''};const reserved=(activeMap.get(material.material_code)||0)+(completedMap.get(material.material_code)||0);return {...material,specification:stock.specification||material.specification||'',stock_quantity:stock.stock_quantity,reserved_stock:reserved,available_stock:Math.max(0,stock.stock_quantity-reserved),stock_synced_at:stock.synced_at};})};
   };
 
   const app = express();app.disable('x-powered-by');app.set('trust proxy',1);app.set('view engine','ejs');app.set('views',path.join(__dirname,'views'));
@@ -164,7 +169,7 @@ function createApp(config = process.env) {
 
   installCatalogAdmin({app,auth,catalog,store,config});
   app.use('/api',(req,res,next)=>{res.set('Cache-Control','no-store');next();});
-  app.get('/api/catalog/sync-state',auth('KIOSK'),(req,res)=>res.json(inventoryState()));
+  app.get('/api/catalog/sync-state',auth('KIOSK'),(req,res)=>res.json(kioskRefreshState()));
   app.get('/api/catalog',auth('KIOSK'),(req,res)=>res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res)=>res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
   app.get('/api/admin/overview',auth('ADMIN'),(req,res)=>res.json({...store.overview(),inventory_sync:inventoryState()}));
@@ -181,7 +186,7 @@ function createApp(config = process.env) {
   app.get('/api/worker/preview',auth('WORKER'),(req,res)=>res.json({...store.preview(),inventory_sync:inventoryState()}));
   app.post('/api/worker/catalog-sync',auth('WORKER'),(req,res)=>res.json(mergePersistentMaterials(req.body.materials)));
   app.post('/api/worker/claim',auth('WORKER'),(req,res)=>res.json({item:store.claim()}));
-  app.post('/api/worker/batch/finish',auth('WORKER'),(req,res)=>res.json(store.finishBatch()));
+  app.post('/api/worker/batch/finish',auth('WORKER'),(req,res)=>{const result=store.finishBatch();let inventorySync=inventoryState();if(inventorySync.status!=='requested')inventorySync=requestInventorySync();res.json({...result,inventory_sync:inventorySync});});
   app.post('/api/worker/inventory-sync',auth('WORKER'),async(req,res,next)=>{try{const state=applyInventorySync(req.body.request_id,req.body.items);const snapshot=await persistStockSnapshot();res.json({...state,stock_snapshot:snapshot});}catch(error){next(error);}});
   app.post('/api/worker/inventory-sync/fail',auth('WORKER'),(req,res)=>res.json(failInventorySync(req.body.request_id,req.body.error)));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res)=>res.json(store.item(req.params.id)));
