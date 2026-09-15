@@ -40,6 +40,9 @@ def _recoverable_chrome_start_error(error):
 
 
 class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
+    PAGE_SIZE = 90
+    PAGING_XPATH = '//*[@id="wrap"]/div[3]/div[2]/div[3]'
+
     def __init__(self, profile, admin_url=None, profile_dir=None):
         self._recovery_profile_dir = None
         try:
@@ -106,66 +109,43 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
             return String(snap.snapshotLength)+'#'+sig(first)+'#'+sig(last);
         """, rows_xpath) or ''
 
-    def _inventory_click_next_page(self):
-        """HOMS 페이징 UI에서 다음 페이지를 찾아 JS 클릭한다."""
-        return self.driver.execute_script("""
-            const scope=document.querySelector('#wrap > div:nth-child(3)') || document.querySelector('#wrap') || document;
-            const visible=(el)=>{
-              if(!el) return false;
-              const s=getComputedStyle(el);
-              const r=el.getBoundingClientRect();
-              if(s.display==='none'||s.visibility==='hidden'||r.width===0||r.height===0) return false;
-              const cls=((el.className||'')+' '+((el.parentElement&&el.parentElement.className)||'')).toLowerCase();
-              return !el.disabled && el.getAttribute('aria-disabled')!=='true' && !/disabled|disable/.test(cls);
-            };
-            const label=(el)=>((el.textContent||el.value||el.getAttribute('title')||el.getAttribute('aria-label')||'')+'').trim();
-            const meta=(el)=>[
-              el.id||'', el.className||'', el.getAttribute('href')||'', el.getAttribute('onclick')||'',
-              (el.parentElement&&el.parentElement.id)||'', (el.parentElement&&el.parentElement.className)||''
-            ].join(' ');
-            const controls=Array.from(scope.querySelectorAll('a,button,input[type="button"],input[type="submit"]')).filter(visible);
-            const pager=controls.filter(el=>{
-              const text=label(el);
-              const info=meta(el);
-              const ancestry=[];
-              let p=el.parentElement;
-              for(let i=0;p&&i<4;i++,p=p.parentElement) ancestry.push((p.id||'')+' '+(p.className||''));
-              return /page|paging|pager|paginate/i.test(info+' '+ancestry.join(' ')) || /^(다음|next|>|›|»|\d+)$/i.test(text);
-            });
+    def _inventory_click_page(self, target_page):
+        """HOMS 페이징 영역에서 지정한 숫자 페이지를 직접 클릭한다."""
+        target_page = int(target_page)
+        if target_page < 2:
+            return {'clicked': False}
 
-            let next=pager.find(el=>/^(다음|next|>|›|»)$/i.test(label(el)));
-            if(!next) next=pager.find(el=>/next|goNext|nextPage/i.test(meta(el)));
+        result = self.driver.execute_script("""
+            const target=String(arguments[0]);
+            const xp=arguments[1];
+            const pager=document.evaluate(
+              xp,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null
+            ).singleNodeValue;
+            if(!pager) return {clicked:false,reason:'pager-not-found'};
 
-            if(!next){
-              let current=0;
-              const pageFields=Array.from(document.querySelectorAll('input,select')).filter(el=>/page|paging|pager/i.test((el.id||'')+' '+(el.name||'')));
-              for(const el of pageFields){
-                const n=parseInt(el.value,10);
-                if(Number.isFinite(n)&&n>0){current=n;break;}
-              }
-              if(!current){
-                const currentNodes=Array.from(scope.querySelectorAll('[aria-current="page"],.active,.on,.current,strong,b'));
-                for(const el of currentNodes){
-                  const n=parseInt((el.textContent||'').trim(),10);
-                  if(Number.isFinite(n)&&n>0){current=n;break;}
-                }
-              }
-              if(!current) current=1;
-              const numbered=pager.map(el=>({el,n:parseInt(label(el),10)}))
-                .filter(x=>Number.isFinite(x.n)&&x.n>current)
-                .sort((a,b)=>a.n-b.n);
-              if(numbered.length) next=numbered[0].el;
+            const links=Array.from(pager.querySelectorAll('a'));
+            let button=links.find(a=>(a.textContent||'').trim()===target);
+
+            // 현장 확인 기준: 2페이지 버튼은 .../div[3]/a[3].
+            // 숫자 텍스트 탐색이 실패할 경우 a[target+1] 위치를 보조로 사용한다.
+            if(!button){
+              const index=Number(target)+1;
+              button=document.evaluate(
+                xp+'/a['+index+']',document,null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,null
+              ).singleNodeValue;
             }
 
-            if(!next) return {clicked:false};
-            const text=label(next);
-            const info=meta(next);
-            next.click();
-            return {clicked:true,label:text,meta:info.slice(0,200)};
-        """) or {'clicked': False}
+            if(!button) return {clicked:false,reason:'page-link-not-found'};
+            const label=(button.textContent||'').trim();
+            button.click();
+            return {clicked:true,label:label,target:Number(target)};
+        """, target_page, self.PAGING_XPATH) or {'clicked': False}
+
+        return result
 
     def sync_inventory(self):
-        """90개 단위로 HOMS 모든 재고 페이지를 빠르게 순회해 전체 목록을 반환한다."""
+        """HOMS 재고를 90개 단위로 읽고 필요한 만큼 숫자 페이지를 순서대로 누른다."""
         from selenium.webdriver.support.ui import WebDriverWait
 
         self.show_homs()
@@ -178,9 +158,12 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
         self._select_visible('//*[@id="srcDisplayYn"]','전체')
         self.unique('//*[@id="frm"]/div[1]/table/tbody/tr[1]/td[4]/a[1]',True).click()
         self.unique(header_xpath,True)
-        WebDriverWait(self.driver,20,poll_frequency=0.1).until(lambda _: self._inventory_page_signature(rows_xpath))
+        WebDriverWait(self.driver,20,poll_frequency=0.1).until(
+            lambda _: self._inventory_page_signature(rows_xpath)
+        )
 
         self._select_page_size_90()
+
         stable={'signature':'','same':0}
         def page_stable(_):
             signature=self._inventory_page_signature(rows_xpath)
@@ -190,12 +173,14 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
                 stable['signature']=signature
                 stable['same']=0
             return bool(signature) and stable['same']>=2
+
         WebDriverWait(self.driver,20,poll_frequency=0.15).until(page_stable)
 
         result=[]
         seen_codes=set()
         seen_pages=set()
         page_number=1
+
         while page_number<=50:
             signature=self._inventory_page_signature(rows_xpath)
             if not signature:
@@ -218,22 +203,37 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
                     'stock_quantity':homs_adapter.parse_inventory_stock(raw.get('stock_text',''))
                 })
                 page_added+=1
-            print(f'재고조회 {page_number}페이지: {page_added}건 / 누적 {len(result)}건',flush=True)
 
-            moved=self._inventory_click_next_page()
-            if not moved.get('clicked'):
+            print(
+                f'재고조회 {page_number}페이지: {page_added}건 / 누적 {len(result)}건',
+                flush=True
+            )
+
+            if page_added < self.PAGE_SIZE:
                 break
+
+            next_page=page_number+1
+            moved=self._inventory_click_page(next_page)
+            if not moved.get('clicked'):
+                print(f'재고조회 {next_page}페이지 없음 / 누적 {len(result)}건',flush=True)
+                break
+
             previous=signature
             WebDriverWait(self.driver,10,poll_frequency=0.1).until(
                 lambda _: self._inventory_page_signature(rows_xpath) not in ('',previous)
             )
-            page_number+=1
+            page_number=next_page
 
         if page_number>50:
             raise RuntimeError('HOMS 재고조회 페이지 수가 비정상적으로 많아 중단합니다.')
         if not result:
             raise RuntimeError('HOMS 재고조회 결과를 한 건도 읽지 못했습니다.')
-        print('HOMS 전체 재고조회 완료:',len(result),'건 /',page_number,'페이지',flush=True)
+
+        print(
+            'HOMS 전체 재고조회 완료:',
+            len(result),'건 /',page_number,'페이지',
+            flush=True
+        )
         return result
 
     def close(self):
@@ -246,13 +246,15 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
 
 
 def main():
-    # worker.main() imports HomsAdapter at runtime, so replacing the module
-    # attribute here keeps all worker business logic unchanged.
     homs_adapter.HomsAdapter = RecoveringHomsAdapter
     try:
         worker.main()
     except (Exception, KeyboardInterrupt) as error:
-        print('중단:', str(error) if not isinstance(error, KeyboardInterrupt) else '사용자 중단', flush=True)
+        print(
+            '중단:',
+            str(error) if not isinstance(error, KeyboardInterrupt) else '사용자 중단',
+            flush=True
+        )
         print('처리 중인 항목은 관리자 화면과 HOMS 내역을 대조하세요. journal.sqlite를 삭제하지 마세요.')
         return 1
     return 0
