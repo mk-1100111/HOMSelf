@@ -43,7 +43,7 @@ test('restores last stock snapshot before Worker starts',async()=>{
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
-test('manual HOMS sync makes badge exactly equal to stockCell and only later approvals deduct',async()=>{
+test('badge always equals synchronized HOMS stock regardless of approvals',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-sync-baseline-'));
   const catalogPath=path.join(dir,'catalog.json');
   const stockPath=path.join(dir,'stock.json');
@@ -65,13 +65,16 @@ test('manual HOMS sync makes badge exactly equal to stockCell and only later app
   try{
     await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders('stock-baseline-test-0001'),body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:2}]})});
     await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'});
-    assert.equal((await stock()).available_stock,8,'동기화 전 승인 건은 승인 직후 차감한다');
+    let exact=await stock();
+    assert.equal(exact.stock_quantity,10);
+    assert.equal(exact.reserved_stock,0);
+    assert.equal(exact.available_stock,10,'승인 여부와 관계없이 뱃지는 마지막 HOMS stock 값과 같다');
 
     const requested=await(await fetch(base+'/api/admin/inventory-sync',{method:'POST',headers:adminHeaders,body:'{}'})).json();
     assert.equal(requested.status,'requested');
     const synced=await fetch(base+'/api/worker/inventory-sync',{method:'POST',headers:workerHeaders,body:JSON.stringify({request_id:requested.request_id,items:[{material_code:code,material_name:'FTTx 인식표',specification:'주황색',stock_quantity:10}]})});
     assert.equal(synced.status,200);
-    const exact=await stock();
+    exact=await stock();
     assert.equal(exact.stock_quantity,10);
     assert.equal(exact.reserved_stock,0);
     assert.equal(exact.available_stock,10,'동기화 직후 뱃지는 HOMS stockCell 값과 정확히 일치한다');
@@ -83,11 +86,13 @@ test('manual HOMS sync makes badge exactly equal to stockCell and only later app
     await new Promise(resolve=>setTimeout(resolve,2));
     await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders('stock-baseline-test-0002'),body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:1}]})});
     await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'});
-    assert.equal((await stock()).available_stock,9,'동기화 이후 새로 승인된 수량만 차감한다');
+    exact=await stock();
+    assert.equal(exact.stock_quantity,10);
+    assert.equal(exact.available_stock,10,'새 승인이 생겨도 뱃지는 HOMS stock 값에서 차감하지 않는다');
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
-test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs after completion',async()=>{
+test('batch completion requests HOMS resync and badge changes only when synced stock changes',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-stock-flow-'));
   const catalogPath=path.join(dir,'catalog.json');
   const stockPath=path.join(dir,'stock.json');
@@ -110,11 +115,11 @@ test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs 
     assert.equal((await stock()).available_stock,10);
     const created=await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders,body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:2}]})});
     assert.equal(created.status,201);
-    assert.equal((await stock()).available_stock,10,'접수 상태에서는 재고를 차감하지 않는다');
+    assert.equal((await stock()).available_stock,10,'접수 상태에서도 HOMS stock 값을 그대로 표시한다');
 
     const approved=await(await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'})).json();
     assert.equal(approved.count,1);
-    assert.equal((await stock()).available_stock,8,'승인 순간부터 재고를 차감한다');
+    assert.equal((await stock()).available_stock,10,'승인 후에도 뱃지는 차감하지 않는다');
 
     await fetch(base+'/api/admin/batch/start',{method:'POST',headers:adminHeaders,body:'{}'});
     const claimed=await(await fetch(base+'/api/worker/claim',{method:'POST',headers:workerHeaders,body:'{}'})).json();
@@ -123,7 +128,7 @@ test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs 
     await fetch(base+`/api/worker/items/${item.id}/begin`,{method:'POST',headers:workerHeaders,body:JSON.stringify({attempt_id:item.attempt_id})});
     const completed=await fetch(base+`/api/worker/items/${item.id}/auto_complete`,{method:'POST',headers:workerHeaders,body:JSON.stringify({attempt_id:item.attempt_id,proof:{source:'homs-history',transaction_id:'stock-flow-tx-1',receiver_id:'TEST',manager_name:'TEST',material_code:code,quantity:2,status:'completed'}})});
     assert.equal(completed.status,200);
-    assert.equal((await stock()).available_stock,8,'완료 후 HOMS 재동기화 전까지 승인 차감값을 유지한다');
+    assert.equal((await stock()).available_stock,10,'불출 완료 후 재동기화 전에는 마지막 HOMS stock 값을 유지한다');
 
     const finished=await(await fetch(base+'/api/worker/batch/finish',{method:'POST',headers:workerHeaders,body:'{}'})).json();
     assert.equal(finished.inventory_sync.status,'requested','일괄 불출 완료 직후 HOMS 재고 동기화를 자동 요청한다');
@@ -132,7 +137,7 @@ test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs 
     const finalStock=await stock();
     assert.equal(finalStock.stock_quantity,8);
     assert.equal(finalStock.reserved_stock,0);
-    assert.equal(finalStock.available_stock,8,'동기화 완료 후 HOMS 현재재고를 그대로 표시한다');
+    assert.equal(finalStock.available_stock,8,'재동기화된 HOMS stock 값이 8이면 뱃지도 정확히 8이다');
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
