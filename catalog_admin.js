@@ -34,8 +34,6 @@ function installCatalogAdmin({app,auth,catalog,store,config}){
     ||path==='/api/worker/inventory-sync/fail'
     ||/^\/api\/worker\/items\/[^/]+\/[^/]+$/.test(path);
 
-  // Free Render의 /tmp SQLite는 캐시다. 중요한 변경은 성공 응답 전에
-  // private HOMSelf-data/runtime/queue_state.json에 직렬화해서 영구 저장한다.
   app.use((req,res,next)=>{
     if(req.method!=='POST'||!durablePost(req.path))return next();
     const originalJson=res.json.bind(res);
@@ -88,8 +86,9 @@ function installCatalogAdmin({app,auth,catalog,store,config}){
 
   const adminMaterialsWithStock=()=>{
     const stockRows=new Map(store.db.prepare('SELECT * FROM material_stock').all().map(row=>[row.material_code,row]));
-    const activeMap=new Map(store.db.prepare(`SELECT material_code,COALESCE(SUM(quantity),0) AS quantity FROM request_items WHERE status IN ('pending','approved','claimed','submitting','needs_review') GROUP BY material_code`).all().map(row=>[row.material_code,row.quantity]));
-    const completedMap=new Map(store.db.prepare(`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity FROM request_items i JOIN material_stock s ON s.material_code=i.material_code WHERE i.status='completed' AND i.updated_at>s.synced_at AND i.evidence!='rejected_batch_completed' AND i.evidence NOT LIKE 'HOMS 조회 결과%' GROUP BY i.material_code`).all().map(row=>[row.material_code,row.quantity]));
+    const approvedAfterSync=`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity FROM request_items i JOIN material_stock s ON s.material_code=i.material_code JOIN (SELECT item_id,MAX(created_at) AS approved_at FROM events WHERE event_type='approved' GROUP BY item_id) a ON a.item_id=i.id WHERE i.status IN ('approved','claimed','submitting','needs_review') AND a.approved_at>s.synced_at GROUP BY i.material_code`;
+    const activeMap=new Map(store.db.prepare(approvedAfterSync).all().map(row=>[row.material_code,row.quantity]));
+    const completedMap=new Map(store.db.prepare(`SELECT i.material_code,COALESCE(SUM(i.quantity),0) AS quantity FROM request_items i JOIN material_stock s ON s.material_code=i.material_code JOIN (SELECT item_id,MAX(created_at) AS approved_at FROM events WHERE event_type='approved' GROUP BY item_id) a ON a.item_id=i.id WHERE i.status='completed' AND a.approved_at>s.synced_at AND i.evidence!='rejected_batch_completed' AND i.evidence NOT LIKE 'HOMS 조회 결과%' GROUP BY i.material_code`).all().map(row=>[row.material_code,row.quantity]));
     return (catalog.materials||[]).map(material=>{
       const stock=stockRows.get(material.material_code);
       if(!stock)return {...material,visible:material.visible!==false,available_stock:null,stock_quantity:null,specification:material.specification||''};
