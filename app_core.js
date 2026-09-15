@@ -164,6 +164,7 @@ function createApp(config = process.env) {
 
   installCatalogAdmin({app,auth,catalog,store,config});
   app.use('/api',(req,res,next)=>{res.set('Cache-Control','no-store');next();});
+  app.get('/api/catalog/sync-state',auth('KIOSK'),(req,res)=>res.json(inventoryState()));
   app.get('/api/catalog',auth('KIOSK'),(req,res)=>res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res)=>res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
   app.get('/api/admin/overview',auth('ADMIN'),(req,res)=>res.json({...store.overview(),inventory_sync:inventoryState()}));
