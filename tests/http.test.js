@@ -43,6 +43,55 @@ test('restores last stock snapshot before Worker starts',async()=>{
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
+test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs after completion',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-stock-flow-'));
+  const catalogPath=path.join(dir,'catalog.json');
+  const stockPath=path.join(dir,'stock.json');
+  const code='10000060837';
+  const catalog={managers:['TEST'],manager_settings:{TEST:{visible:true}},materials:[{material_code:code,material_name:'FTTx 인식표',material_unit:1,visible:true}]};
+  const syncedAt=Date.now()-5000;
+  fs.writeFileSync(catalogPath,JSON.stringify(catalog));
+  fs.writeFileSync(stockPath,JSON.stringify({version:1,generated_at:Date.now(),items:[{material_code:code,material_name:'FTTx 인식표',specification:'주황색',stock_quantity:10,synced_at:syncedAt}]}));
+  const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:catalogPath,STOCK_SNAPSHOT_PATH:stockPath,ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
+  const {app,store}=createApp(cfg);const server=app.listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const kioskHeaders={Authorization:'Bearer '+cfg.KIOSK_TOKEN,'Content-Type':'application/json','Idempotency-Key':'stock-flow-test-0001'};
+  const adminHeaders={Authorization:'Bearer '+cfg.ADMIN_TOKEN,'Content-Type':'application/json'};
+  const workerHeaders={Authorization:'Bearer '+cfg.WORKER_TOKEN,'Content-Type':'application/json'};
+  const stock=async()=>{
+    const body=await(await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).json();
+    return body.materials.find(x=>x.material_code===code);
+  };
+  try{
+    assert.equal((await stock()).available_stock,10);
+    const created=await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders,body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:2}]})});
+    assert.equal(created.status,201);
+    assert.equal((await stock()).available_stock,10,'접수 상태에서는 재고를 차감하지 않는다');
+
+    const approved=await(await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'})).json();
+    assert.equal(approved.count,1);
+    assert.equal((await stock()).available_stock,8,'승인 순간부터 재고를 차감한다');
+
+    await fetch(base+'/api/admin/batch/start',{method:'POST',headers:adminHeaders,body:'{}'});
+    const claimed=await(await fetch(base+'/api/worker/claim',{method:'POST',headers:workerHeaders,body:'{}'})).json();
+    const item=claimed.item;
+    assert.ok(item&&item.attempt_id);
+    await fetch(base+`/api/worker/items/${item.id}/begin`,{method:'POST',headers:workerHeaders,body:JSON.stringify({attempt_id:item.attempt_id})});
+    const completed=await fetch(base+`/api/worker/items/${item.id}/auto_complete`,{method:'POST',headers:workerHeaders,body:JSON.stringify({attempt_id:item.attempt_id,proof:{source:'homs-history',transaction_id:'stock-flow-tx-1',receiver_id:'TEST',manager_name:'TEST',material_code:code,quantity:2,status:'completed'}})});
+    assert.equal(completed.status,200);
+    assert.equal((await stock()).available_stock,8,'완료 후 HOMS 재동기화 전까지 승인 차감값을 유지한다');
+
+    const finished=await(await fetch(base+'/api/worker/batch/finish',{method:'POST',headers:workerHeaders,body:'{}'})).json();
+    assert.equal(finished.inventory_sync.status,'requested','일괄 불출 완료 직후 HOMS 재고 동기화를 자동 요청한다');
+    const syncResponse=await fetch(base+'/api/worker/inventory-sync',{method:'POST',headers:workerHeaders,body:JSON.stringify({request_id:finished.inventory_sync.request_id,items:[{material_code:code,material_name:'FTTx 인식표',specification:'주황색',stock_quantity:8}]})});
+    assert.equal(syncResponse.status,200);
+    const finalStock=await stock();
+    assert.equal(finalStock.stock_quantity,8);
+    assert.equal(finalStock.reserved_stock,0);
+    assert.equal(finalStock.available_stock,8,'동기화 완료 후 HOMS 현재재고를 그대로 표시한다');
+  }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
+});
+
 test('HTTP auth, approval sheet workflow, schema and EJS routes',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-http-'));
   const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:path.resolve('config/catalog.example.json'),ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
