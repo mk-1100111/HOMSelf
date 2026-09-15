@@ -43,6 +43,50 @@ test('restores last stock snapshot before Worker starts',async()=>{
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
+test('manual HOMS sync makes badge exactly equal to stockCell and only later approvals deduct',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-sync-baseline-'));
+  const catalogPath=path.join(dir,'catalog.json');
+  const stockPath=path.join(dir,'stock.json');
+  const code='10000060837';
+  const catalog={managers:['TEST'],manager_settings:{TEST:{visible:true}},materials:[{material_code:code,material_name:'FTTx 인식표',material_unit:1,visible:true}]};
+  const syncedAt=Date.now()-5000;
+  fs.writeFileSync(catalogPath,JSON.stringify(catalog));
+  fs.writeFileSync(stockPath,JSON.stringify({version:1,generated_at:Date.now(),items:[{material_code:code,material_name:'FTTx 인식표',specification:'주황색',stock_quantity:10,synced_at:syncedAt}]}));
+  const cfg={DB_PATH:path.join(dir,'db.sqlite'),CATALOG_PATH:catalogPath,STOCK_SNAPSHOT_PATH:stockPath,ADMIN_TOKEN:'1234',KIOSK_TOKEN:'5678',WORKER_TOKEN:'w'.repeat(40)};
+  const {app,store}=createApp(cfg);const server=app.listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));const base='http://127.0.0.1:'+server.address().port;
+  const adminHeaders={Authorization:'Bearer '+cfg.ADMIN_TOKEN,'Content-Type':'application/json'};
+  const workerHeaders={Authorization:'Bearer '+cfg.WORKER_TOKEN,'Content-Type':'application/json'};
+  const kioskHeaders=key=>({Authorization:'Bearer '+cfg.KIOSK_TOKEN,'Content-Type':'application/json','Idempotency-Key':key});
+  const stock=async()=>{
+    const body=await(await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).json();
+    return body.materials.find(x=>x.material_code===code);
+  };
+  try{
+    await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders('stock-baseline-test-0001'),body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:2}]})});
+    await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'});
+    assert.equal((await stock()).available_stock,8,'동기화 전 승인 건은 승인 직후 차감한다');
+
+    const requested=await(await fetch(base+'/api/admin/inventory-sync',{method:'POST',headers:adminHeaders,body:'{}'})).json();
+    assert.equal(requested.status,'requested');
+    const synced=await fetch(base+'/api/worker/inventory-sync',{method:'POST',headers:workerHeaders,body:JSON.stringify({request_id:requested.request_id,items:[{material_code:code,material_name:'FTTx 인식표',specification:'주황색',stock_quantity:10}]})});
+    assert.equal(synced.status,200);
+    const exact=await stock();
+    assert.equal(exact.stock_quantity,10);
+    assert.equal(exact.reserved_stock,0);
+    assert.equal(exact.available_stock,10,'동기화 직후 뱃지는 HOMS stockCell 값과 정확히 일치한다');
+
+    const adminBody=await(await fetch(base+'/api/admin/catalog-management',{headers:adminHeaders})).json();
+    const adminItem=adminBody.materials.find(x=>x.material_code===code);
+    assert.equal(adminItem.available_stock,10,'관리자 자재 화면도 HOMS 동기화값과 일치한다');
+
+    await new Promise(resolve=>setTimeout(resolve,2));
+    await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders('stock-baseline-test-0002'),body:JSON.stringify({manager_name:'TEST',items:[{material_code:code,quantity:1}]})});
+    await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'});
+    assert.equal((await stock()).available_stock,9,'동기화 이후 새로 승인된 수량만 차감한다');
+  }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
+});
+
 test('kiosk stock stays at HOMS while pending, deducts on approval, and resyncs after completion',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-stock-flow-'));
   const catalogPath=path.join(dir,'catalog.json');
