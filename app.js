@@ -15,12 +15,15 @@ function installExactStockBadges(app){
     next();
   };
 
-  // createCoreApp()가 API 라우트를 먼저 등록하므로 이 미들웨어를
-  // Express 라우터의 맨 앞에 배치해 응답 직전에 재고값을 1:1로 고정한다.
+  // createCoreApp()가 API 라우트를 먼저 등록하므로, Express 자체 초기화
+  // 미들웨어는 그대로 둔 채 첫 라우트 직전에 1:1 재고 응답 보정기를 넣는다.
   app.use(exactStockMiddleware);
   const stack=app._router&&app._router.stack;
   if(!stack||!stack.length)throw new Error('Express 라우터를 초기화할 수 없습니다.');
-  stack.unshift(stack.pop());
+  const layer=stack.pop();
+  const firstRouteIndex=stack.findIndex(entry=>entry.route);
+  if(firstRouteIndex<0)throw new Error('Express API 라우트를 찾을 수 없습니다.');
+  stack.splice(firstRouteIndex,0,layer);
 }
 
 function createApp(config){
