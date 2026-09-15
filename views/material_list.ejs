@@ -4,7 +4,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HOMSelf</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5vKNBQNGReWt38b6jQOmWm" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
@@ -125,6 +125,8 @@
         let material_list = <%- JSON.stringify(materials) %>;
         const materialLabel = material => String((material && (material.display_name || material.material_name)) || '').trim();
         const materialByCode = code => material_list.find(item => String(item.material_code) === String(code));
+        let inventorySyncCompletedAt = null;
+        let inventorySyncWatchBusy = false;
 
         function setMaterialImage(img,placeholder,material){
             if(material.image_data){img.src=material.image_data;return;}
@@ -175,13 +177,54 @@
             document.getElementById('material-lists').appendChild(col);
         }
 
-        $(document).ready(async function(){
-            const catalog = await window.getHomselfCatalog();
-            if (!catalog) return;
-            material_list = catalog.materials;
-            document.getElementById('material-lists').replaceChildren();
+        function renderMaterialList(){
+            const list=document.getElementById('material-lists');
+            if(!list)return;
+            list.replaceChildren();
             material_list.forEach(renderMaterialCard);
+        }
+
+        async function applyLatestCatalog(){
+            const catalog=await window.getHomselfCatalog();
+            if(!catalog)return false;
+            material_list=Array.isArray(catalog.materials)?catalog.materials:[];
+            inventorySyncCompletedAt=Number((catalog.inventory_sync&&catalog.inventory_sync.completed_at)||0);
+            renderMaterialList();
+            return true;
+        }
+
+        async function fetchInventorySyncState(){
+            const token=sessionStorage.getItem('homself.kiosk.token')||'';
+            if(!token)return null;
+            const response=await fetch('/api/catalog/sync-state',{
+                headers:{Authorization:'Bearer '+token},
+                cache:'no-store'
+            });
+            if(!response.ok)return null;
+            return response.json();
+        }
+
+        async function watchInventorySync(){
+            if(inventorySyncWatchBusy||document.hidden)return;
+            inventorySyncWatchBusy=true;
+            try{
+                const state=await fetchInventorySyncState();
+                if(!state)return;
+                const completedAt=Number(state.completed_at||0);
+                if(inventorySyncCompletedAt===null){inventorySyncCompletedAt=completedAt;return;}
+                if(completedAt!==inventorySyncCompletedAt){
+                    await applyLatestCatalog();
+                }
+            }finally{
+                inventorySyncWatchBusy=false;
+            }
+        }
+
+        $(document).ready(async function(){
+            await applyLatestCatalog();
         });
+        setInterval(()=>watchInventorySync().catch(()=>{}),1000);
+        document.addEventListener('visibilitychange',()=>{if(!document.hidden)watchInventorySync().catch(()=>{});});
 
         var minusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-dash-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/> </svg>';
         var plusIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"> <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/> <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/> </svg>';
