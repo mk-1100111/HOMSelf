@@ -14,6 +14,7 @@ import worker
 
 
 _ORIGINAL_ADAPTER = homs_adapter.HomsAdapter
+_ORIGINAL_INVENTORY_SYNC = worker.execute_inventory_sync
 
 
 def _error_text(error):
@@ -236,6 +237,54 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
         )
         return result
 
+    def sync_inventory_codes(self, material_codes):
+        """일괄불출 완료 후 실제 불출된 상품코드만 HOMS에서 다시 조회한다."""
+        from selenium.webdriver.support.ui import WebDriverWait
+
+        codes=[]
+        for value in material_codes or []:
+            code=str(value).strip()
+            if code and code not in codes:
+                codes.append(code)
+        if not codes:
+            return []
+
+        self.show_homs()
+        self.driver.get(self.p['stock_url'])
+        self.unique(self.p['stock_search_css'])
+        rows_xpath='//*[@id="wrap"]/div[3]/div[2]/table/tbody/tr'
+        result=[]
+
+        for index,code in enumerate(codes,1):
+            self.fill(self.p['stock_search_css'],code)
+            self.unique(self.p['stock_query_xpath'],True).click()
+
+            def matching_row(_):
+                for raw in self._inventory_page_rows(rows_xpath):
+                    try:
+                        parsed=self._parse_material_cell(raw.get('material_text',''))
+                    except Exception:
+                        continue
+                    if parsed[0]==code:
+                        return raw,parsed
+                return False
+
+            raw,(parsed_code,name,specification)=WebDriverWait(
+                self.driver,10,poll_frequency=0.1
+            ).until(matching_row)
+            result.append({
+                'material_code':parsed_code,
+                'material_name':name,
+                'specification':specification,
+                'stock_quantity':homs_adapter.parse_inventory_stock(raw.get('stock_text',''))
+            })
+            print(
+                f'배치 재고 확인 {index}/{len(codes)}: {parsed_code} = {result[-1]["stock_quantity"]}',
+                flush=True
+            )
+
+        return result
+
     def close(self):
         recovery_dir = self._recovery_profile_dir
         try:
@@ -245,8 +294,48 @@ class RecoveringHomsAdapter(_ORIGINAL_ADAPTER):
                 shutil.rmtree(recovery_dir, ignore_errors=True)
 
 
+def _execute_inventory_sync(api,adapter,sync_state,cfg):
+    if sync_state.get('scope')!='batch':
+        return _ORIGINAL_INVENTORY_SYNC(api,adapter,sync_state,cfg)
+
+    request_id=sync_state.get('request_id')
+    if not request_id:
+        raise RuntimeError('재고 동기화 요청번호가 없습니다.')
+    codes=[]
+    for value in sync_state.get('material_codes') or []:
+        code=str(value).strip()
+        if code and code not in codes:
+            codes.append(code)
+    if not codes:
+        print('일괄불출 완료 후 재조회할 실제 불출 자재가 없습니다.',flush=True)
+        return False
+
+    print('일괄불출 재고 확인 시작:',len(codes),'개 자재만 HOMS 재조회',flush=True)
+    try:
+        rows=adapter.sync_inventory_codes(codes)
+        result=api.post('inventory-sync',{'request_id':request_id,'items':rows})
+        print('일괄불출 재고 반영 완료:',result.get('count',len(rows)),'건',flush=True)
+        return True
+    except BaseException as error:
+        try:
+            api.post('inventory-sync/fail',{
+                'request_id':request_id,
+                'error':f'{type(error).__name__}: {error}'
+            })
+        except Exception:
+            pass
+        print('일괄불출 재고 확인 실패:',type(error).__name__,str(error),flush=True)
+        return False
+    finally:
+        try:
+            adapter.show_admin(refresh=False)
+        except Exception:
+            pass
+
+
 def main():
     homs_adapter.HomsAdapter = RecoveringHomsAdapter
+    worker.execute_inventory_sync = _execute_inventory_sync
     try:
         worker.main()
     except (Exception, KeyboardInterrupt) as error:
