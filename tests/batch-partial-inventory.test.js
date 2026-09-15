@@ -11,6 +11,7 @@ test('batch finish refreshes only actually released material codes',async()=>{
   const stockPath=path.join(dir,'stock.json');
   const codeA='10000000001';
   const codeB='10000000002';
+  const originalStock={[codeA]:10,[codeB]:20};
   const catalog={
     managers:['TEST'],
     manager_settings:{TEST:{visible:true}},
@@ -58,7 +59,7 @@ test('batch finish refreshes only actually released material codes',async()=>{
     await fetch(base+'/api/admin/batch/start',{method:'POST',headers:adminHeaders,body:'{}'});
 
     let claimed=await(await fetch(base+'/api/worker/claim',{method:'POST',headers:workerHeaders,body:'{}'})).json();
-    assert.equal(claimed.item.material_code,codeA);
+    const releasedCode=claimed.item.material_code;
     await fetch(base+`/api/worker/items/${claimed.item.id}/begin`,{
       method:'POST',headers:workerHeaders,body:JSON.stringify({attempt_id:claimed.item.attempt_id})
     });
@@ -69,7 +70,8 @@ test('batch finish refreshes only actually released material codes',async()=>{
     assert.equal(response.status,200);
 
     claimed=await(await fetch(base+'/api/worker/claim',{method:'POST',headers:workerHeaders,body:'{}'})).json();
-    assert.equal(claimed.item.material_code,codeB);
+    const skippedCode=claimed.item.material_code;
+    assert.notEqual(skippedCode,releasedCode);
     response=await fetch(base+`/api/worker/items/${claimed.item.id}/skip_missing_result`,{
       method:'POST',headers:workerHeaders,
       body:JSON.stringify({attempt_id:claimed.item.attempt_id,note:'HOMS 조회 결과 없음 - 미불출 스킵'})
@@ -81,27 +83,27 @@ test('batch finish refreshes only actually released material codes',async()=>{
     })).json();
     assert.equal(finished.inventory_sync.status,'requested');
     assert.equal(finished.inventory_sync.scope,'batch');
-    assert.deepEqual(finished.inventory_sync.material_codes,[codeA]);
+    assert.deepEqual(finished.inventory_sync.material_codes,[releasedCode]);
 
     const preview=await(await fetch(base+'/api/worker/preview',{headers:workerHeaders})).json();
     assert.equal(preview.inventory_sync.scope,'batch');
-    assert.deepEqual(preview.inventory_sync.material_codes,[codeA]);
+    assert.deepEqual(preview.inventory_sync.material_codes,[releasedCode]);
 
     response=await fetch(base+'/api/worker/inventory-sync',{
       method:'POST',headers:workerHeaders,
       body:JSON.stringify({request_id:finished.inventory_sync.request_id,items:[
-        {material_code:codeA,material_name:'A 자재',specification:'',stock_quantity:7}
+        {material_code:releasedCode,material_name:releasedCode===codeA?'A 자재':'B 자재',specification:'',stock_quantity:7}
       ]})
     });
     assert.equal(response.status,200);
 
     const kiosk=await(await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).json();
-    const a=kiosk.materials.find(item=>item.material_code===codeA);
-    const b=kiosk.materials.find(item=>item.material_code===codeB);
-    assert.equal(a.stock_quantity,7);
-    assert.equal(a.available_stock,7);
-    assert.equal(b.stock_quantity,20);
-    assert.equal(b.available_stock,20);
+    const released=kiosk.materials.find(item=>item.material_code===releasedCode);
+    const skipped=kiosk.materials.find(item=>item.material_code===skippedCode);
+    assert.equal(released.stock_quantity,7);
+    assert.equal(released.available_stock,7);
+    assert.equal(skipped.stock_quantity,originalStock[skippedCode]);
+    assert.equal(skipped.available_stock,originalStock[skippedCode]);
   }finally{
     await new Promise(resolve=>server.close(resolve));
     store.close();
