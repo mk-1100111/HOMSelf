@@ -1,7 +1,28 @@
 const {createApp:createCoreApp}=require('./app_core');
 
-function installExactStockBadges(app){
-  const exactStockMiddleware=(req,res,next)=>{
+function installResponseTweaks(app,store){
+  const readSyncCodes=()=>{
+    try{
+      const value=JSON.parse(store.setting('inventory_sync_material_codes')||'[]');
+      return Array.isArray(value)?value.filter(code=>typeof code==='string'&&code):[];
+    }catch{return [];}
+  };
+  const writeSyncMeta=(scope,codes=[])=>{
+    const normalized=[...new Set((Array.isArray(codes)?codes:[]).filter(code=>typeof code==='string'&&code))];
+    store.setSetting('inventory_sync_scope',scope==='batch'?'batch':'full');
+    store.setSetting('inventory_sync_material_codes',JSON.stringify(normalized));
+    return normalized;
+  };
+  const releasedBatchCodes=()=>{
+    const ids=store.batchItems();
+    if(!ids.length)return [];
+    const placeholders=ids.map(()=>'?').join(',');
+    const rows=store.db.prepare(`SELECT DISTINCT material_code FROM request_items WHERE id IN (${placeholders}) AND status='completed' AND evidence!='rejected_batch_completed' AND evidence NOT LIKE 'HOMS 조회 결과%' ORDER BY material_code`).all(...ids);
+    return rows.map(row=>row.material_code);
+  };
+
+  const responseTweaks=(req,res,next)=>{
+    const batchCodes=req.method==='POST'&&req.path==='/api/worker/batch/finish'?releasedBatchCodes():null;
     const originalJson=res.json.bind(res);
     res.json=body=>{
       if((req.path==='/api/catalog'||req.path==='/api/admin/catalog-management')&&body&&Array.isArray(body.materials)){
@@ -10,14 +31,37 @@ function installExactStockBadges(app){
           return {...item,reserved_stock:0,available_stock:item.stock_quantity};
         })};
       }
+
+      if(req.method==='POST'&&req.path==='/api/admin/inventory-sync'&&res.statusCode<400&&body&&body.status==='requested'){
+        writeSyncMeta('full',[]);
+        body={...body,scope:'full',material_codes:[]};
+      }
+
+      if(req.method==='POST'&&req.path==='/api/worker/batch/finish'&&res.statusCode<400&&body&&body.inventory_sync){
+        const codes=writeSyncMeta('batch',batchCodes||[]);
+        if(body.inventory_sync.status==='requested'&&codes.length===0){
+          const completedAt=Date.now();
+          store.setSetting('inventory_sync_status','completed');
+          store.setSetting('inventory_sync_completed_at',completedAt);
+          store.setSetting('inventory_sync_count','0');
+          store.setSetting('inventory_sync_error','');
+          body={...body,inventory_sync:{...body.inventory_sync,status:'completed',completed_at:completedAt,count:0,scope:'batch',material_codes:[]}};
+        }else{
+          body={...body,inventory_sync:{...body.inventory_sync,scope:'batch',material_codes:codes}};
+        }
+      }
+
+      if(req.method==='GET'&&req.path==='/api/worker/preview'&&body&&body.inventory_sync){
+        const scope=store.setting('inventory_sync_scope')==='batch'?'batch':'full';
+        body={...body,inventory_sync:{...body.inventory_sync,scope,material_codes:readSyncCodes()}};
+      }
+
       return originalJson(body);
     };
     next();
   };
 
-  // createCoreApp()가 API 라우트를 먼저 등록하므로, Express 자체 초기화
-  // 미들웨어는 그대로 둔 채 첫 라우트 직전에 1:1 재고 응답 보정기를 넣는다.
-  app.use(exactStockMiddleware);
+  app.use(responseTweaks);
   const stack=app._router&&app._router.stack;
   if(!stack||!stack.length)throw new Error('Express 라우터를 초기화할 수 없습니다.');
   const layer=stack.pop();
@@ -28,7 +72,7 @@ function installExactStockBadges(app){
 
 function createApp(config){
   const result=createCoreApp(config);
-  installExactStockBadges(result.app);
+  installResponseTweaks(result.app,result.store);
   return result;
 }
 
