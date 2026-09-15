@@ -2,6 +2,8 @@ const KEY='homself.admin.token';
 let token=sessionStorage.getItem(KEY)||'';
 if(!token)location.replace('/admin');
 let rows=[];
+let inventorySyncCompletedAt=null;
+let inventorySyncWatchBusy=false;
 const $=id=>document.getElementById(id);
 
 function authLost(){
@@ -12,10 +14,13 @@ function authLost(){
 }
 
 async function api(path,body){
-  const r=await fetch('/api/admin/'+path,{
-    method:body===undefined?'GET':'POST',
+  const isGet=body===undefined;
+  const requestPath=isGet?path+(path.includes('?')?'&':'?')+'_='+Date.now():path;
+  const r=await fetch('/api/admin/'+requestPath,{
+    method:isGet?'GET':'POST',
     headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-    ...(body===undefined?{}:{body:JSON.stringify(body)})
+    cache:'no-store',
+    ...(isGet?{}:{body:JSON.stringify(body)})
   });
   const d=await r.json().catch(()=>({}));
   if(!r.ok){
@@ -196,6 +201,29 @@ async function load(){
   render();
 }
 
+async function watchInventorySync(){
+  if(inventorySyncWatchBusy||document.hidden||!token)return;
+  inventorySyncWatchBusy=true;
+  try{
+    const overview=await api('overview');
+    const state=overview.inventory_sync||{};
+    const completedAt=Number(state.completed_at||0);
+    if(inventorySyncCompletedAt===null){
+      inventorySyncCompletedAt=completedAt;
+      return;
+    }
+    if(completedAt!==inventorySyncCompletedAt){
+      inventorySyncCompletedAt=completedAt;
+      await load();
+      $('status').textContent='재고 동기화 완료 · 뱃지 수량을 최신 재고로 갱신했습니다.';
+    }
+  }finally{
+    inventorySyncWatchBusy=false;
+  }
+}
+
 $('search').oninput=render;
 $('logout').onclick=authLost;
 load().catch(e=>$('status').textContent=e.message);
+setInterval(()=>watchInventorySync().catch(()=>{}),1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)watchInventorySync().catch(()=>{});});
