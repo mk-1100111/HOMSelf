@@ -53,6 +53,16 @@ class SafetyTests(unittest.TestCase):
         with patch('builtins.input',side_effect=AssertionError('unexpected input')):
             run_loop(api,adapter,self.journal,sleep=lambda _:None,stop=lambda:adapter.clicks==2)
         self.assertEqual(self.journal.db.execute("SELECT count(*) FROM attempts WHERE phase='completed'").fetchone()[0],2)
+    def test_homs_session_failure_waits_and_recovers(self):
+        api=FakeAPI(items=[ITEM]);adapter=FakeAdapter();checks={'count':0};sleeps=[]
+        def flaky_session():
+            checks['count']+=1
+            if checks['count']==1:raise RuntimeError('HOMS 재고조회 화면을 확인할 수 없습니다.')
+        adapter.ensure_session=flaky_session
+        run_loop(api,adapter,self.journal,poll_seconds=5,sleep=lambda seconds:sleeps.append(seconds),stop=lambda:adapter.clicks==1)
+        self.assertGreaterEqual(checks['count'],2)
+        self.assertEqual(adapter.clicks,1)
+        self.assertIn(5,sleeps)
     def test_idle_without_batch_never_claims(self):
         api=FakeAPI(items=[ITEM]);api.get=lambda _:{'paused':True,'batch_active':False,'batch_remaining':0,'worker_protocol':3,'blocked':None,'items':[]}
         adapter=FakeAdapter();ticks=[]
