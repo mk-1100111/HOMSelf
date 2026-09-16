@@ -93,7 +93,7 @@ def execute_inventory_sync(api,adapter,sync_state,cfg):
         except Exception:pass
 
 def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
-    previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0
+    previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0;session_error=None
     while not stop():
         try:
             api.post('heartbeat',{'mode':'live'});state=api.get('preview')
@@ -145,7 +145,19 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
             finally:last_keepalive=now
 
         if state.get('batch_active') and not state.get('blocked') and state['items']:
-            adapter.ensure_session()
+            try:
+                adapter.ensure_session()
+                if session_error is not None:
+                    print('HOMS 재고조회 화면 자동복구 완료. 남은 승인건 처리를 재개합니다.',flush=True)
+                    session_error=None;previous=None
+            except Exception as error:
+                current=f'{type(error).__name__}: {error}'
+                if current!=session_error:
+                    print('HOMS 자동복구 대기:',str(error),flush=True)
+                    print('HOMS 탭에서 로그인이 필요하면 로그인만 완료하세요. 재고조회 화면은 워커가 자동으로 다시 확인하고 불출을 재개합니다.',flush=True)
+                    session_error=current
+                if once:raise
+                sleep(max(5,poll_seconds));continue
             try:item=api.post('claim',{})['item']
             except HTTPFailure as error:
                 if error.status!=409:raise
