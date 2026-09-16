@@ -25,17 +25,27 @@ test('admin request UI script parses and keeps manager grouping client-side',()=
   assert.match(adminSource,/renderApprovalSheet\(data\)/);
 });
 
-test('request list uses only simplified pending/completed status labels',()=>{
-  assert.match(adminSource,/function simpleStatus\(item\)\{return item\.status==='completed'\?'완료':'접수';\}/);
+test('request list distinguishes pending, completed and needs-review status labels',()=>{
+  assert.match(adminSource,/item\.status==='completed'\)return '완료'/);
+  assert.match(adminSource,/item\.status==='needs_review'\)return '확인 필요'/);
   assert.match(adminSource,/status-simple-completed/);
   assert.match(adminSource,/status-simple-pending/);
+  assert.match(adminSource,/status-simple-review/);
 });
 
-test('cleanup hides only completed and rejected request rows without changing request state',()=>{
-  assert.match(adminSource,/\['completed','cancelled'\]\.includes\(item\.status\)/);
+test('cleanup hides completed, rejected and needs-review rows without changing request state',()=>{
+  assert.match(adminSource,/\['completed','cancelled','needs_review'\]\.includes\(item\.status\)/);
   assert.match(adminSource,/cleanedItemsKey='homself\.admin\.cleaned\.items\.v1'/);
   assert.match(adminSource,/visibleRequestItems\(data\.items\|\|\[\]\)/);
   assert.doesNotMatch(adminSource,/api\('cleanup/);
+});
+
+test('needs-review rows expose explicit HOMS reconciliation actions',()=>{
+  assert.match(adminSource,/confirm_completed/);
+  assert.match(adminSource,/confirm_not_submitted/);
+  assert.match(adminSource,/불출됨/);
+  assert.match(adminSource,/미불출/);
+  assert.match(adminSource,/확인 근거를 10자 이상 입력하세요/);
 });
 
 test('completed rejected decision includes rejected batch and HOMS missing result evidence',()=>{
@@ -68,7 +78,7 @@ test('manager and material admin scale from three to at most five columns',()=>{
   assert.match(managersAdminSource,/manager-card-body/);
   assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(adminManageCss,/@media\(min-width:980px\)\{\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}\}/);
-  assert.match(adminManageCss,/@media\(min-width:1380px\)\{\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(adminManageCss,/@media\(min-width:1380px\)\{\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(5,minmax\(0,1fr\)/);
   assert.match(adminManageCss,/@media\(max-width:650px\)/);
   assert.match(adminManageCss,/\.manage-grid,\.manager-grid\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\);gap:5px\}/);
   assert.match(adminManageCss,/\.manage-image-wrap\{[^}]*aspect-ratio:1\/1/);
