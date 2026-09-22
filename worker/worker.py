@@ -97,8 +97,13 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
     while not stop():
         try:
             api.post('heartbeat',{'mode':'live'});state=api.get('preview')
-        except (ConnectionFailure,TimeoutError,OSError):
-            print('대기 중 서버 연결 끊김. 불출 없이 연결을 재확인합니다.',flush=True)
+        except HTTPFailure as error:
+            if error.status in (401,403):raise
+            print('대기 중 서버 응답 오류. 불출 없이 연결을 재확인합니다:',type(error).__name__,str(error),flush=True)
+            if once:raise
+            sleep(min(30,poll_seconds*2));continue
+        except (ConnectionFailure,TimeoutError,OSError) as error:
+            print('대기 중 서버 연결 끊김. 불출 없이 연결을 재확인합니다:',type(error).__name__,str(error),flush=True)
             if once:raise
             sleep(min(30,poll_seconds*2));continue
         if state.get('worker_protocol')!=3:raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
@@ -158,13 +163,45 @@ def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,
                     session_error=current
                 if once:raise
                 sleep(max(5,poll_seconds));continue
-            try:item=api.post('claim',{})['item']
+            try:
+                item=api.post('claim',{})['item']
             except HTTPFailure as error:
-                if error.status!=409:raise
-                item=None
-            if item:print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True);execute_item(api,adapter,journal,item);previous=None
+                if error.status==409:
+                    item=None
+                elif error.status in (401,403):
+                    raise
+                else:
+                    print('불출 항목 점유 요청 실패 - 워커는 계속 대기합니다:',type(error).__name__,str(error),flush=True)
+                    if once:raise
+                    sleep(max(5,poll_seconds));continue
+            except (ConnectionFailure,TimeoutError,OSError) as error:
+                print('불출 항목 점유 응답을 확인할 수 없습니다. 재불출하지 않고 서버 상태를 다시 확인합니다:',type(error).__name__,str(error),flush=True)
+                if once:raise
+                sleep(max(5,poll_seconds));continue
+            if item:
+                print('자동 처리 시작:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
+                try:
+                    execute_item(api,adapter,journal,item)
+                except Exception as error:
+                    print('자동 처리 보류 - 워커는 종료하지 않습니다:',type(error).__name__,str(error),flush=True)
+                    print('해당 항목은 확인 필요 상태로 유지합니다. HOMS/관리자 내역을 대조한 뒤 처리 상태를 정리하세요.',flush=True)
+                    previous=None
+                    if once:raise
+                    sleep(max(5,poll_seconds));continue
+                previous=None
         elif state.get('batch_active') and not state.get('blocked') and not state['items'] and state.get('batch_remaining',0)==0:
-            api.post('batch/finish',{});print('일괄 불출 완료. 이후 승인 건은 다음 불출 시작까지 대기합니다.',flush=True)
+            try:
+                api.post('batch/finish',{})
+            except HTTPFailure as error:
+                if error.status in (401,403):raise
+                print('일괄 불출 완료 처리 서버 응답 실패 - 워커는 계속 상태를 확인합니다:',type(error).__name__,str(error),flush=True)
+                if once:raise
+                sleep(max(5,poll_seconds));continue
+            except (ConnectionFailure,TimeoutError,OSError) as error:
+                print('일괄 불출 완료 처리 연결 실패 - 워커는 계속 상태를 확인합니다:',type(error).__name__,str(error),flush=True)
+                if once:raise
+                sleep(max(5,poll_seconds));continue
+            print('일괄 불출 완료. 이후 승인 건은 다음 불출 시작까지 대기합니다.',flush=True)
             try:adapter.show_admin(refresh=False)
             except Exception:pass
             previous=None
