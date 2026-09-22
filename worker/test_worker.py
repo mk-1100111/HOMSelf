@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from worker import Journal, execute_item, run_loop, run_supervised_loop
-from common import ConnectionFailure
+from common import ConnectionFailure, HTTPFailure
+from worker_entry import _execute_inventory_sync
 from homs_adapter import parse_stock, validate_profile
 
 ITEM={'id':'test-item','attempt_id':'attempt-1','manager_name':'TEST','material_code':'123','quantity':2}
@@ -149,6 +150,39 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue(any(c.endswith('/review') for c in api.calls))
         self.assertFalse(any(c.endswith('/complete') for c in api.calls))
         self.assertTrue(waits)
+    def test_empty_batch_inventory_sync_completes_once(self):
+        class EmptyBatchAPI:
+            def __init__(self):self.calls=[]
+            def post(self,path,body):
+                self.calls.append((path,body))
+                if path=='inventory-sync':return {'status':'completed','count':0}
+                raise AssertionError(path)
+        api=EmptyBatchAPI()
+        result=_execute_inventory_sync(
+            api,FakeAdapter(),
+            {'scope':'batch','request_id':'sync-empty','material_codes':[]},
+            {}
+        )
+        self.assertTrue(result)
+        self.assertEqual(api.calls,[('inventory-sync',{'request_id':'sync-empty','items':[]})])
+
+    def test_empty_batch_inventory_sync_legacy_server_stops_retry_loop(self):
+        class LegacyBatchAPI:
+            def __init__(self):self.calls=[]
+            def post(self,path,body):
+                self.calls.append((path,body))
+                if path=='inventory-sync':raise HTTPFailure(400)
+                if path=='inventory-sync/fail':return {'status':'failed'}
+                raise AssertionError(path)
+        api=LegacyBatchAPI()
+        result=_execute_inventory_sync(
+            api,FakeAdapter(),
+            {'scope':'batch','request_id':'sync-legacy','material_codes':[]},
+            {}
+        )
+        self.assertTrue(result)
+        self.assertEqual([path for path,_ in api.calls],['inventory-sync','inventory-sync/fail'])
+
     def test_supervisor_recovers_unexpected_loop_error_without_closing_session(self):
         api=FakeAPI();adapter=FakeAdapter();waits=[]
         with patch('worker.run_loop',side_effect=[ValueError('bad server payload'),None]) as monitored:
