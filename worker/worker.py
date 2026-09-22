@@ -20,13 +20,35 @@ class Journal:
     def record(self,item,phase):
         self.db.execute('INSERT INTO attempts VALUES(?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET attempt_id=excluded.attempt_id, phase=excluded.phase, updated_at=excluded.updated_at',(item['id'],item['attempt_id'],phase,datetime.now(timezone.utc).isoformat()));self.db.commit()
     def exists(self,item):return self.db.execute("SELECT phase FROM attempts WHERE item_id=? AND phase!='cleared_manual'",(item['id'],)).fetchone()
+    def active_record(self,item):
+        row=self.db.execute("SELECT attempt_id,phase,updated_at FROM attempts WHERE item_id=? AND phase!='cleared_manual'",(item['id'],)).fetchone()
+        return {'attempt_id':row[0],'phase':row[1],'updated_at':row[2]} if row else None
+    def clear_after_confirmed_not_submitted(self,item,reconcile_state):
+        record=self.active_record(item)
+        if not record:return False
+        confirmed_at=reconcile_state.get('confirmed_not_submitted_at') if isinstance(reconcile_state,dict) else 0
+        if not isinstance(confirmed_at,(int,float)) or confirmed_at<=0:return False
+        try:local_at=datetime.fromisoformat(record['updated_at']).timestamp()*1000
+        except Exception:return False
+        if confirmed_at<=local_at:return False
+        self.db.execute("UPDATE attempts SET phase='cleared_manual',updated_at=? WHERE item_id=?",(datetime.now(timezone.utc).isoformat(),item['id']))
+        self.db.commit()
+        return True
     def save_proof(self,item,proof):self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(proof['transaction_id'],item['id'],json.dumps(proof,ensure_ascii=False)));self.db.commit()
 
 def execute_item(api,adapter,journal,item):
     from homs_adapter import MissingStockResult
     route='items/'+item['id']+'/'
     def update(action,note='',proof=None):return api.post(route+action,{'attempt_id':item['attempt_id'],'note':note,'proof':proof})
-    if journal.exists(item):update('review','동일 항목의 회사 PC 처리 기록이 이미 있습니다. 재불출 차단.');raise RuntimeError('로컬 기록이 있는 항목입니다. HOMS 대조 없이 재처리할 수 없습니다.')
+    if journal.exists(item):
+        reconcile_state={}
+        try:reconcile_state=api.get(route+'reconcile')
+        except Exception:pass
+        if journal.clear_after_confirmed_not_submitted(item,reconcile_state):
+            print('관리자 미불출 확인 기록 검증 완료 - 이전 로컬 차단을 해제하고 새 승인건을 처리합니다:',item['manager_name'],item['material_code'],item['quantity'],flush=True)
+        else:
+            update('review','동일 항목의 회사 PC 처리 기록이 이미 있습니다. 관리자 미불출 확인 기록 없이 재불출할 수 없습니다.')
+            raise RuntimeError('로컬 기록이 있는 항목입니다. 관리자에서 HOMS 미불출 확인 후 다시 승인하세요.')
     journal.record(item,'claimed');stage='prepare'
     try:
         adapter.prepare(item);adapter.verify(item);stage='begin';journal.record(item,'begin_requested');update('begin');journal.record(item,'submitting');stage='submit';result=adapter.submit_once(item);journal.record(item,'ui_confirmed');stage='complete'
