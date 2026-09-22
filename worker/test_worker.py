@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from worker import Journal, execute_item, run_loop
+from worker import Journal, execute_item, run_loop, run_supervised_loop
 from common import ConnectionFailure
 from homs_adapter import parse_stock, validate_profile
 
@@ -127,6 +127,25 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue(any(c.endswith('/review') for c in api.calls))
         self.assertFalse(any(c.endswith('/complete') for c in api.calls))
         self.assertTrue(waits)
+    def test_supervisor_recovers_unexpected_loop_error_without_closing_session(self):
+        api=FakeAPI();adapter=FakeAdapter();waits=[]
+        with patch('worker.run_loop',side_effect=[ValueError('bad server payload'),None]) as monitored:
+            run_supervised_loop(
+                api,adapter,self.journal,{},poll_seconds=5,
+                sleep=lambda seconds:waits.append(seconds)
+            )
+        self.assertEqual(monitored.call_count,2)
+        self.assertEqual(waits,[5])
+
+    def test_supervisor_keeps_protocol_mismatch_fatal(self):
+        api=FakeAPI();adapter=FakeAdapter()
+        with patch('worker.run_loop',side_effect=RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')):
+            with self.assertRaises(RuntimeError):
+                run_supervised_loop(
+                    api,adapter,self.journal,{},poll_seconds=5,
+                    sleep=lambda _:self.fail('fatal protocol mismatch must not retry')
+                )
+
     def test_legacy_server_protocol_stops(self):
         api=FakeAPI();api.get=lambda _:{'paused':False,'batch_active':True,'batch_remaining':1,'worker_protocol':2,'blocked':None,'items':[ITEM]}
         with self.assertRaises(RuntimeError):run_loop(api,FakeAdapter(),self.journal)
