@@ -110,3 +110,56 @@ test('batch finish refreshes only actually released material codes',async()=>{
     fs.rmSync(dir,{recursive:true,force:true});
   }
 });
+
+
+test('empty batch inventory sync completes while empty full sync stays blocked',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-empty-batch-sync-'));
+  const catalogPath=path.join(dir,'catalog.json');
+  fs.writeFileSync(catalogPath,JSON.stringify({
+    managers:['TEST'],
+    materials:[{material_code:'10000000001',material_name:'A 자재',material_unit:1,visible:true}]
+  }));
+  const cfg={
+    DB_PATH:path.join(dir,'db.sqlite'),
+    CATALOG_PATH:catalogPath,
+    ADMIN_TOKEN:'1234',
+    KIOSK_TOKEN:'5678',
+    WORKER_TOKEN:'w'.repeat(40)
+  };
+  const {app,store}=createApp(cfg);
+  const server=app.listen(0,'127.0.0.1');
+  await new Promise(resolve=>server.once('listening',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  const workerHeaders={Authorization:'Bearer '+cfg.WORKER_TOKEN,'Content-Type':'application/json'};
+
+  try{
+    store.setSetting('inventory_sync_status','requested');
+    store.setSetting('inventory_sync_request_id','empty-batch-request');
+    store.setSetting('inventory_sync_scope','batch');
+    store.setSetting('inventory_sync_material_codes','[]');
+
+    let response=await fetch(base+'/api/worker/inventory-sync',{
+      method:'POST',headers:workerHeaders,
+      body:JSON.stringify({request_id:'empty-batch-request',items:[]})
+    });
+    assert.equal(response.status,200);
+    let body=await response.json();
+    assert.equal(body.status,'completed');
+    assert.equal(body.count,0);
+
+    store.setSetting('inventory_sync_status','requested');
+    store.setSetting('inventory_sync_request_id','empty-full-request');
+    store.setSetting('inventory_sync_scope','full');
+    store.setSetting('inventory_sync_material_codes','[]');
+
+    response=await fetch(base+'/api/worker/inventory-sync',{
+      method:'POST',headers:workerHeaders,
+      body:JSON.stringify({request_id:'empty-full-request',items:[]})
+    });
+    assert.equal(response.status,400);
+  }finally{
+    await new Promise(resolve=>server.close(resolve));
+    store.close();
+    fs.rmSync(dir,{recursive:true,force:true});
+  }
+});
