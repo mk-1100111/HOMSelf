@@ -209,6 +209,23 @@ def run_loop(api,adapter,journal,cfg=None,poll_seconds=5,once=False,sleep=time.s
         if once:return
         sleep(poll_seconds)
 
+def run_supervised_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
+    """Keep the live Chrome/HOMS session alive across unexpected monitor-loop errors."""
+    while not stop():
+        try:
+            return run_loop(api,adapter,journal,cfg,poll_seconds,once=once,sleep=sleep,stop=stop)
+        except KeyboardInterrupt:
+            raise
+        except Exception as error:
+            if once:
+                raise
+            message=str(error)
+            if '서버/회사 PC 코드 버전이 맞지 않습니다.' in message:
+                raise
+            print('감시 루프 오류 자동복구 대기 - Chrome/HOMS 세션은 유지합니다:',type(error).__name__,message,flush=True)
+            print('불출은 임의 재시도하지 않고 서버 상태부터 다시 확인합니다.',flush=True)
+            sleep(max(5,poll_seconds))
+
 def reconcile(api,item_id,journal):
     item=api.get('items/'+item_id)
     if item['status']!='pending' or item['attempt_id'] is not None or len(item['evidence'])<10:raise RuntimeError('관리자 화면에서 미불출 수동 판정을 먼저 완료해야 합니다.')
@@ -235,7 +252,7 @@ def main():
             if args.reconcile:reconcile(api,args.reconcile,journal);return
             from homs_adapter import HomsAdapter
             profile=json.loads((ROOT/cfg['selectors_file']).read_text(encoding='utf-8-sig'));admin_url=cfg['server_url'].rstrip('/')+'/admin/releases';adapter=HomsAdapter(profile,admin_url=admin_url,profile_dir=runtime/'chrome_profile');recover_interrupted(api);restore_catalog(api,cfg)
-            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_loop(api,adapter,journal,cfg,interval,once=args.once)
+            print('일괄 불출/재고 동기화 감시 시작. 종료: Ctrl+C',flush=True);print('HOMS 세션 유지는 유휴 상태에서 최대 30분에 한 번만 화면 전환합니다.',flush=True);print('사용 순서: HOMS 로그인 -> 관리자 승인/재고 동기화 -> 회사 PC 자동 처리',flush=True);run_supervised_loop(api,adapter,journal,cfg,interval,once=args.once)
         finally:
             journal.db.close()
             if adapter:adapter.close()
