@@ -191,6 +191,7 @@ function createApp(config = process.env) {
   app.post('/api/worker/inventory-sync',auth('WORKER'),async(req,res,next)=>{try{const state=applyInventorySync(req.body.request_id,req.body.items);const snapshot=await persistStockSnapshot();res.json({...state,stock_snapshot:snapshot});}catch(error){next(error);}});
   app.post('/api/worker/inventory-sync/fail',auth('WORKER'),(req,res)=>res.json(failInventorySync(req.body.request_id,req.body.error)));
   app.get('/api/worker/items/:id',auth('WORKER'),(req,res)=>res.json(store.item(req.params.id)));
+  app.get('/api/worker/items/:id/reconcile',auth('WORKER'),(req,res)=>res.json(store.reconcileState(req.params.id)));
   app.post('/api/worker/items/:id/:action',auth('WORKER'),(req,res)=>res.json(store.transition(req.params.id,req.body.attempt_id,req.params.action,req.body.note,req.body.proof)));
   app.get('/',(req,res)=>res.redirect('/main'));
   app.get('/main',(req,res)=>res.render('main',{managers:[]}));
