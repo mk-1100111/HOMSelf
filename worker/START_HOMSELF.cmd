@@ -1,6 +1,25 @@
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal EnableExtensions
+
+if not "%HOMSELF_AUTOUPDATE_DONE%"=="1" (
+  set "HOMSELF_AUTOUPDATE_DONE=1"
+  echo.
+  echo HOMSelf 최신 버전을 확인합니다.
+  call "%~dp0..\UPDATE_HOMSELF.cmd" --auto
+  if errorlevel 1 (
+    echo.
+    echo [중단] 최신 버전 업데이트에 실패하여 자동불출을 시작하지 않습니다.
+    echo 네트워크/Git 상태를 확인한 뒤 다시 실행하세요.
+    pause
+    exit /b 1
+  )
+  echo.
+  echo 최신 버전 적용 완료. 업데이트된 실행파일로 다시 시작합니다.
+  call "%~f0"
+  exit /b %ERRORLEVEL%
+)
+
 cd /d "%~dp0"
 set "PYTHONUTF8=1"
 
