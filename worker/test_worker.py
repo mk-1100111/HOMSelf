@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,8 +10,8 @@ from homs_adapter import parse_stock, validate_profile
 ITEM={'id':'test-item','attempt_id':'attempt-1','manager_name':'TEST','material_code':'123','quantity':2}
 
 class FakeAPI:
-    def __init__(self, fail=None, items=()):
-        self.calls=[];self.fail=fail;self.items=list(items);self.finished=False
+    def __init__(self, fail=None, items=(), reconcile=None):
+        self.calls=[];self.fail=fail;self.items=list(items);self.finished=False;self.reconcile=reconcile or {}
     def post(self,path,body):
         self.calls.append(path)
         if path.endswith('/'+str(self.fail)):raise RuntimeError('simulated lost response')
@@ -18,6 +19,7 @@ class FakeAPI:
         if path=='batch/finish':self.finished=True;return {'paused':True,'batch_active':False}
         return {}
     def get(self,path):
+        if path.endswith('/reconcile'):return self.reconcile
         return {'paused':False,'batch_active':True,'batch_remaining':len(self.items),
                 'worker_protocol':3,'blocked':None,'items':self.items[:]}
 
@@ -48,6 +50,26 @@ class SafetyTests(unittest.TestCase):
     def test_lost_begin_never_clicks(self):self.assertEqual(self.run_case('begin'),0)
     def test_lost_complete_never_resubmits(self):self.assertEqual(self.run_case('complete'),1)
     def test_success_without_input_never_resubmits(self):self.assertEqual(self.run_case(),1)
+    def test_admin_confirmed_non_release_allows_safe_retry(self):
+        old={**ITEM,'attempt_id':'attempt-old'}
+        self.journal.record(old,'needs_review')
+        confirmed=int(time.time()*1000)+10000
+        api=FakeAPI(reconcile={'confirmed_not_submitted_at':confirmed,'event_id':77})
+        adapter=FakeAdapter()
+        retry={**ITEM,'attempt_id':'attempt-new'}
+        execute_item(api,adapter,self.journal,retry)
+        self.assertEqual(adapter.clicks,1)
+        row=self.journal.db.execute("SELECT attempt_id,phase FROM attempts WHERE item_id=?",(ITEM['id'],)).fetchone()
+        self.assertEqual(row,('attempt-new','completed'))
+
+    def test_stale_non_release_confirmation_does_not_clear_newer_local_block(self):
+        self.journal.record(ITEM,'needs_review')
+        api=FakeAPI(reconcile={'confirmed_not_submitted_at':1,'event_id':1})
+        adapter=FakeAdapter()
+        with self.assertRaises(RuntimeError):
+            execute_item(api,adapter,self.journal,{**ITEM,'attempt_id':'attempt-new'})
+        self.assertEqual(adapter.clicks,0)
+
     def test_local_journal_collision_does_not_kill_live_worker(self):
         api=FakeAPI(items=[ITEM]);adapter=FakeAdapter();waits=[]
         self.journal.record(ITEM,'completed')
