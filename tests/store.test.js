@@ -68,7 +68,12 @@ test('pause quarantines in-flight work and clears current batch',()=>{
   assert.equal(s.item(item.id).status,'needs_review');assert.equal(s.batchActive(),false);assert.equal(s.paused(),true);
   assert.throws(()=>s.transition(item.id,item.attempt_id,'begin'));
   s.adminAction(item.id,'confirm_not_submitted','HOMS checked no release; stopped old PC');
-  assert.equal(s.item(item.id).status,'pending');s.close();
+  assert.equal(s.item(item.id).status,'pending');
+  const reconciliation=s.reconcileState(item.id);
+  assert.equal(reconciliation.item_id,item.id);
+  assert.ok(reconciliation.confirmed_not_submitted_at>0);
+  assert.ok(reconciliation.event_id>0);
+  s.close();
 });
 
 test('legacy receipt verification remains fail-closed',()=>{
