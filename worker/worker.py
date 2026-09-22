@@ -92,7 +92,8 @@ def execute_inventory_sync(api,adapter,sync_state,cfg):
         try:adapter.show_admin(refresh=False)
         except Exception:pass
 
-def run_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
+def run_loop(api,adapter,journal,cfg=None,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
+    cfg=cfg or {}
     previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0;session_error=None
     while not stop():
         try:
