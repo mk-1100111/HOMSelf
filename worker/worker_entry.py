@@ -308,7 +308,27 @@ def _execute_inventory_sync(api,adapter,sync_state,cfg):
             codes.append(code)
     if not codes:
         print('일괄불출 완료 후 재조회할 실제 불출 자재가 없습니다.',flush=True)
-        return False
+        try:
+            result=api.post('inventory-sync',{'request_id':request_id,'items':[]})
+            print('빈 배치 재고 동기화 완료 처리:',result.get('count',0),'건',flush=True)
+            return True
+        except worker.HTTPFailure as error:
+            if error.status!=400:
+                print('빈 배치 재고 동기화 완료 응답 확인 실패:',type(error).__name__,str(error),flush=True)
+                return False
+            try:
+                api.post('inventory-sync/fail',{
+                    'request_id':request_id,
+                    'error':'실제 불출 자재 없음 - 재조회 없이 배치 동기화 종료'
+                })
+                print('구버전 서버 호환 처리: 빈 배치 동기화 반복을 종료했습니다.',flush=True)
+                return True
+            except Exception as fallback_error:
+                print('빈 배치 동기화 종료 처리 실패:',type(fallback_error).__name__,str(fallback_error),flush=True)
+                return False
+        except Exception as error:
+            print('빈 배치 재고 동기화 완료 처리 실패:',type(error).__name__,str(error),flush=True)
+            return False
 
     print('일괄불출 재고 확인 시작:',len(codes),'개 자재만 HOMS 재조회',flush=True)
     try:
