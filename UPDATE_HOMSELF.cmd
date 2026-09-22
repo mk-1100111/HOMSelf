@@ -5,19 +5,21 @@ cd /d "%~dp0"
 
 set "REPO_URL=https://github.com/mk-1100111/HOMSelf.git"
 set "BRANCH=master"
+set "AUTO_MODE=0"
+if /I "%~1"=="--auto" set "AUTO_MODE=1"
 
 where git >nul 2>nul
 if errorlevel 1 (
   echo [오류] Git이 설치되어 있지 않습니다.
   echo Git for Windows 설치 후 다시 실행하세요.
-  pause
+  if "%AUTO_MODE%"=="0" pause
   exit /b 1
 )
 
 echo.
 echo HOMSelf 회사 PC 업데이트를 시작합니다.
 echo worker\config.json, worker\selectors.json, worker\runtime, worker\.venv 는 Git 관리 대상이 아니므로 유지됩니다.
-echo 실행 중인 HOMSelf 자동불출 창이 있다면 먼저 Ctrl+C로 종료한 뒤 업데이트하세요.
+if "%AUTO_MODE%"=="0" echo 실행 중인 HOMSelf 자동불출 창이 있다면 먼저 Ctrl+C로 종료한 뒤 업데이트하세요.
 echo.
 
 if not exist ".git\" (
@@ -47,7 +49,7 @@ if not exist ".git\" (
     echo 안전을 위해 자동 덮어쓰지 않습니다.
     echo 아래 git status 결과를 확인하세요.
     git status --short
-    pause
+    if "%AUTO_MODE%"=="0" pause
     exit /b 2
   )
 
@@ -56,7 +58,7 @@ if not exist ".git\" (
     echo.
     echo [중단] Git에 스테이징된 로컬 수정사항이 있습니다.
     git status --short
-    pause
+    if "%AUTO_MODE%"=="0" pause
     exit /b 2
   )
 
@@ -78,14 +80,16 @@ if exist "worker\.venv\Scripts\python.exe" (
 echo.
 echo 업데이트 완료.
 git log -1 --oneline
-echo.
-echo 이제 worker\HOMSelf_회사PC.cmd 를 실행하세요.
-pause
+if "%AUTO_MODE%"=="0" (
+  echo.
+  echo 이제 worker\HOMSelf_회사PC.cmd 를 실행하세요.
+  pause
+)
 exit /b 0
 
 :failed
 echo.
 echo [실패] HOMSelf 업데이트가 완료되지 않았습니다.
 echo config.json / selectors.json / runtime 기록은 삭제하지 마세요.
-pause
+if "%AUTO_MODE%"=="0" pause
 exit /b 1
