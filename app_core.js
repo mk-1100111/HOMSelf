@@ -127,7 +127,13 @@ function createApp(config = process.env) {
   });
   const failInventorySync=(requestId,errorText) => store.tx(() => {const state=inventoryState();check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');store.setSetting('inventory_sync_status','failed');store.setSetting('inventory_sync_error',String(errorText || '회사 PC 동기화 실패').slice(0,300));return inventoryState();});
   const applyInventorySync=(requestId,rows) => store.tx(() => {
-    const state=inventoryState();check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');check(Array.isArray(rows) && rows.length>0 && rows.length<=500,'재고 동기화 데이터가 잘못됐습니다.',400);
+    const state=inventoryState();
+    check(state.status==='requested' && state.request_id===requestId,'재고 동기화 요청이 이미 변경됐습니다.');
+    const batchScope=store.setting('inventory_sync_scope')==='batch';
+    let batchCodes=[];
+    try{batchCodes=JSON.parse(store.setting('inventory_sync_material_codes')||'[]');}catch{batchCodes=[];}
+    const emptyBatch=batchScope && Array.isArray(batchCodes) && batchCodes.length===0;
+    check(Array.isArray(rows) && rows.length<=500 && (rows.length>0 || emptyBatch),'재고 동기화 데이터가 잘못됐습니다.',400);
     const now=Date.now(),seen=new Set();const upsert=store.db.prepare(`INSERT INTO material_stock(material_code,material_name,specification,stock_quantity,synced_at) VALUES(?,?,?,?,?) ON CONFLICT(material_code) DO UPDATE SET material_name=excluded.material_name,specification=excluded.specification,stock_quantity=excluded.stock_quantity,synced_at=excluded.synced_at`);
     for(const row of rows){check(row && typeof row.material_code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(row.material_code),'상품코드가 잘못됐습니다.',400);check(!seen.has(row.material_code),'동일 상품코드가 중복됐습니다.',400);seen.add(row.material_code);check(typeof row.material_name==='string' && row.material_name.trim().length>0 && row.material_name.length<=200,'상품명이 잘못됐습니다.',400);check(typeof row.specification==='string' && row.specification.length<=500,'규격이 잘못됐습니다.',400);check(Number.isSafeInteger(row.stock_quantity) && row.stock_quantity>=0 && row.stock_quantity<=100000000,'현재재고가 잘못됐습니다.',400);upsert.run(row.material_code,row.material_name.trim(),row.specification.trim(),row.stock_quantity,now);}
     mergeSyncedMaterials();store.setSetting('inventory_sync_status','completed');store.setSetting('inventory_sync_completed_at',now);store.setSetting('inventory_sync_count',rows.length);store.setSetting('inventory_sync_error','');store.setSetting('inventory_snapshot_restored','0');return inventoryState();
