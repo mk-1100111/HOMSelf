@@ -48,6 +48,17 @@ class SafetyTests(unittest.TestCase):
     def test_lost_begin_never_clicks(self):self.assertEqual(self.run_case('begin'),0)
     def test_lost_complete_never_resubmits(self):self.assertEqual(self.run_case('complete'),1)
     def test_success_without_input_never_resubmits(self):self.assertEqual(self.run_case(),1)
+    def test_local_journal_collision_does_not_kill_live_worker(self):
+        api=FakeAPI(items=[ITEM]);adapter=FakeAdapter();waits=[]
+        self.journal.record(ITEM,'completed')
+        run_loop(
+            api,adapter,self.journal,
+            sleep=lambda seconds:waits.append(seconds),
+            stop=lambda:any(c.endswith('/review') for c in api.calls) and bool(waits)
+        )
+        self.assertEqual(adapter.clicks,0)
+        self.assertTrue(any(c.endswith('/review') for c in api.calls))
+        self.assertTrue(waits)
     def test_batch_processes_all_captured_items(self):
         api=FakeAPI(items=[ITEM,{**ITEM,'id':'second','attempt_id':'attempt-2'}]);adapter=FakeAdapter()
         with patch('builtins.input',side_effect=AssertionError('unexpected input')):
@@ -89,23 +100,33 @@ class SafetyTests(unittest.TestCase):
         adapter=FakeAdapter();waits=[]
         run_loop(api,adapter,self.journal,sleep=lambda _:waits.append(adapter.clicks),stop=lambda:adapter.clicks==1)
         self.assertEqual(waits[:1],[0]);self.assertEqual(api.calls.count('claim'),1)
-    def test_uncertain_claim_stops_without_click_or_retry(self):
-        api=FakeAPI(items=[ITEM]);post=api.post
+    def test_uncertain_claim_waits_without_click_or_duplicate(self):
+        api=FakeAPI(items=[ITEM]);post=api.post;claims={'count':0}
         def uncertain(path,body):
-            if path=='claim':raise ConnectionFailure('response lost')
+            if path=='claim':
+                claims['count']+=1
+                raise ConnectionFailure('response lost')
             return post(path,body)
-        api.post=uncertain;adapter=FakeAdapter()
-        with self.assertRaises(ConnectionFailure):run_loop(api,adapter,self.journal,sleep=lambda _:self.fail('must stop'))
+        api.post=uncertain;adapter=FakeAdapter();waits=[]
+        run_loop(api,adapter,self.journal,sleep=lambda seconds:waits.append(seconds),stop=lambda:claims['count']>=2)
         self.assertEqual(adapter.clicks,0)
-    def test_submit_failure_stops_loop_and_marks_review(self):
-        api=FakeAPI(items=[ITEM]);adapter=FakeAdapter()
+        self.assertGreaterEqual(claims['count'],2)
+        self.assertTrue(waits)
+    def test_submit_failure_keeps_loop_alive_and_marks_review(self):
+        api=FakeAPI(items=[ITEM]);adapter=FakeAdapter();waits=[]
         def bad(_):
             adapter.clicks+=1
             raise RuntimeError('HOMS submit failed')
         adapter.submit_once=bad
-        with self.assertRaises(RuntimeError):run_loop(api,adapter,self.journal,sleep=lambda _:self.fail('must stop'))
-        self.assertEqual(adapter.clicks,1);self.assertTrue(api.calls[-1].endswith('/review'))
+        run_loop(
+            api,adapter,self.journal,
+            sleep=lambda seconds:waits.append(seconds),
+            stop=lambda:any(c.endswith('/review') for c in api.calls) and bool(waits)
+        )
+        self.assertEqual(adapter.clicks,1)
+        self.assertTrue(any(c.endswith('/review') for c in api.calls))
         self.assertFalse(any(c.endswith('/complete') for c in api.calls))
+        self.assertTrue(waits)
     def test_legacy_server_protocol_stops(self):
         api=FakeAPI();api.get=lambda _:{'paused':False,'batch_active':True,'batch_remaining':1,'worker_protocol':2,'blocked':None,'items':[ITEM]}
         with self.assertRaises(RuntimeError):run_loop(api,FakeAdapter(),self.journal)
