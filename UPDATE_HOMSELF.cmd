@@ -31,6 +31,9 @@ if not exist ".git\" (
   if errorlevel 1 goto failed
   git reset --hard "origin/%BRANCH%"
   if errorlevel 1 goto failed
+  git branch -M "%BRANCH%"
+  if errorlevel 1 goto failed
+  git branch --set-upstream-to="origin/%BRANCH%" "%BRANCH%" >nul 2>nul
 ) else (
   git remote set-url origin "%REPO_URL%"
   if errorlevel 1 goto failed
