@@ -30,6 +30,22 @@ function installResponseTweaks(app,store){
   };
 
   const responseTweaks=(req,res,next)=>{
+    if(req.method==='POST'&&req.path==='/api/worker/inventory-sync'&&store.setting('inventory_sync_scope')!=='batch'&&req.body&&Array.isArray(req.body.items)){
+      const seen=new Set(req.body.items.map(item=>item&&item.material_code).filter(code=>typeof code==='string'&&code));
+      const missing=(store.catalog.materials||[])
+        .filter(material=>material&&typeof material.material_code==='string'&&!seen.has(material.material_code))
+        .map(material=>({
+          material_code:material.material_code,
+          material_name:String(material.material_name||material.material_code),
+          specification:String(material.specification||''),
+          stock_quantity:0
+        }));
+      if(missing.length){
+        req.body={...req.body,items:[...req.body.items,...missing]};
+        console.log('전체 재고 동기화 누락 항목 재고 0 처리:',missing.length,'건');
+      }
+    }
+
     const originalJson=res.json.bind(res);
     res.json=body=>{
       if((req.path==='/api/catalog'||req.path==='/api/admin/catalog-management')&&body&&Array.isArray(body.materials)){
