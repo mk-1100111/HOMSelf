@@ -62,6 +62,26 @@ async function patch(code,patchData){
   await load();
 }
 
+async function manualRelease(item){
+  const label=item.display_name||item.material_name||item.material_code;
+  const stock=Number.isFinite(item.stock_quantity)?item.stock_quantity:null;
+  const guide=stock===null
+    ?label+'\n임의불출 수량을 입력하세요.'
+    :label+'\n현재 HOMS 재고 '+stock.toLocaleString('ko-KR')+'개\n임의불출 수량을 입력하세요.';
+  const raw=prompt(guide,'1');
+  if(raw===null)return false;
+  const quantity=Number(String(raw).trim());
+  if(!Number.isSafeInteger(quantity)||quantity<1||quantity>100000)throw Error('임의불출 수량은 1~100000 정수로 입력하세요.');
+  if(stock!==null&&quantity>stock)throw Error('현재 HOMS 재고보다 많은 수량은 임의불출할 수 없습니다.');
+  if(!confirm(label+' '+quantity.toLocaleString('ko-KR')+'개를 임의불출로 승인 시트에 올릴까요?\n실제 일괄불출 시 김무경으로 불출됩니다.'))return false;
+  $('status').textContent='임의불출 등록 중...';
+  const requestKey=(crypto&&typeof crypto.randomUUID==='function')?crypto.randomUUID():'manual-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+  const d=await api('manual-release',{material_code:item.material_code,quantity,request_key:requestKey});
+  $('status').textContent=(d.duplicate?'기존 임의불출 요청 확인 · ':'임의불출 등록 완료 · ')+label+' '+quantity.toLocaleString('ko-KR')+'개 · 승인 시트의 임의불출 그룹에 추가됨';
+  await load();
+  return true;
+}
+
 function materialImage(img,item,placeholder){
   if(item.image_data){img.src=item.image_data;return;}
   const base='/public/static/img/material_list/'+encodeURIComponent(item.material_code);
@@ -176,7 +196,21 @@ function card(item){
   del.onclick=()=>patch(item.material_code,{image_data:null}).catch(e=>$('status').textContent=e.message);
   row2.append(file,up,del);
 
-  el.append(imageWrap,h,meta,nameEditor,toggle,row1,row2);
+  const row3=document.createElement('div');
+  row3.className='manage-row';
+  const manual=document.createElement('button');
+  manual.className='danger';
+  manual.textContent='임의불출';
+  manual.title='재고 보정을 위해 승인 시트에 임의불출 건을 추가합니다. 실제 HOMS 불출 담당자는 김무경입니다.';
+  manual.disabled=!Number.isFinite(item.stock_quantity)||item.stock_quantity<=0;
+  if(manual.disabled)manual.title='HOMS 재고 동기화 후 재고가 있는 품목에서 사용할 수 있습니다.';
+  manual.onclick=async()=>{
+    manual.disabled=true;
+    try{await manualRelease(item);}catch(e){$('status').textContent=e.message;}finally{manual.disabled=!Number.isFinite(item.stock_quantity)||item.stock_quantity<=0;}
+  };
+  row3.append(manual);
+
+  el.append(imageWrap,h,meta,nameEditor,toggle,row1,row2,row3);
   return el;
 }
 
