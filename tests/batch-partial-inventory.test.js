@@ -5,13 +5,12 @@ const os=require('node:os');
 const path=require('node:path');
 const {createApp}=require('../app');
 
-test('batch finish refreshes only actually released material codes',async()=>{
+test('batch finish requests one full HOMS inventory refresh',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-batch-stock-'));
   const catalogPath=path.join(dir,'catalog.json');
   const stockPath=path.join(dir,'stock.json');
   const codeA='10000000001';
   const codeB='10000000002';
-  const originalStock={[codeA]:10,[codeB]:20};
   const catalog={
     managers:['TEST'],
     manager_settings:{TEST:{visible:true}},
@@ -82,28 +81,29 @@ test('batch finish refreshes only actually released material codes',async()=>{
       method:'POST',headers:workerHeaders,body:'{}'
     })).json();
     assert.equal(finished.inventory_sync.status,'requested');
-    assert.equal(finished.inventory_sync.scope,'batch');
-    assert.deepEqual(finished.inventory_sync.material_codes,[releasedCode]);
+    assert.equal(finished.inventory_sync.scope,'full');
+    assert.deepEqual(finished.inventory_sync.material_codes,[]);
 
     const preview=await(await fetch(base+'/api/worker/preview',{headers:workerHeaders})).json();
-    assert.equal(preview.inventory_sync.scope,'batch');
-    assert.deepEqual(preview.inventory_sync.material_codes,[releasedCode]);
+    assert.equal(preview.inventory_sync.scope,'full');
+    assert.deepEqual(preview.inventory_sync.material_codes,[]);
 
     response=await fetch(base+'/api/worker/inventory-sync',{
       method:'POST',headers:workerHeaders,
       body:JSON.stringify({request_id:finished.inventory_sync.request_id,items:[
-        {material_code:releasedCode,material_name:releasedCode===codeA?'A 자재':'B 자재',specification:'',stock_quantity:7}
+        {material_code:codeA,material_name:'A 자재',specification:'',stock_quantity:7},
+        {material_code:codeB,material_name:'B 자재',specification:'',stock_quantity:19}
       ]})
     });
     assert.equal(response.status,200);
 
     const kiosk=await(await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).json();
-    const released=kiosk.materials.find(item=>item.material_code===releasedCode);
-    const skipped=kiosk.materials.find(item=>item.material_code===skippedCode);
-    assert.equal(released.stock_quantity,7);
-    assert.equal(released.available_stock,7);
-    assert.equal(skipped.stock_quantity,originalStock[skippedCode]);
-    assert.equal(skipped.available_stock,originalStock[skippedCode]);
+    const itemA=kiosk.materials.find(item=>item.material_code===codeA);
+    const itemB=kiosk.materials.find(item=>item.material_code===codeB);
+    assert.equal(itemA.stock_quantity,7);
+    assert.equal(itemA.available_stock,7);
+    assert.equal(itemB.stock_quantity,19);
+    assert.equal(itemB.available_stock,19);
   }finally{
     await new Promise(resolve=>server.close(resolve));
     store.close();
