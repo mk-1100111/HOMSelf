@@ -28,16 +28,8 @@ function installResponseTweaks(app,store){
     store.setSetting('inventory_sync_material_codes',JSON.stringify(normalized));
     return normalized;
   };
-  const releasedBatchCodes=()=>{
-    const ids=store.batchItems();
-    if(!ids.length)return [];
-    const placeholders=ids.map(()=>'?').join(',');
-    const rows=store.db.prepare(`SELECT DISTINCT material_code FROM request_items WHERE id IN (${placeholders}) AND status='completed' AND evidence!='rejected_batch_completed' AND evidence NOT LIKE 'HOMS 조회 결과%' ORDER BY material_code`).all(...ids);
-    return rows.map(row=>row.material_code);
-  };
 
   const responseTweaks=(req,res,next)=>{
-    const batchCodes=req.method==='POST'&&req.path==='/api/worker/batch/finish'?releasedBatchCodes():null;
     const originalJson=res.json.bind(res);
     res.json=body=>{
       if((req.path==='/api/catalog'||req.path==='/api/admin/catalog-management')&&body&&Array.isArray(body.materials)){
@@ -65,17 +57,8 @@ function installResponseTweaks(app,store){
       }
 
       if(req.method==='POST'&&req.path==='/api/worker/batch/finish'&&res.statusCode<400&&body&&body.inventory_sync){
-        const codes=writeSyncMeta('batch',batchCodes||[]);
-        if(body.inventory_sync.status==='requested'&&codes.length===0){
-          const completedAt=Date.now();
-          store.setSetting('inventory_sync_status','completed');
-          store.setSetting('inventory_sync_completed_at',completedAt);
-          store.setSetting('inventory_sync_count','0');
-          store.setSetting('inventory_sync_error','');
-          body={...body,inventory_sync:{...body.inventory_sync,status:'completed',completed_at:completedAt,count:0,scope:'batch',material_codes:[]}};
-        }else{
-          body={...body,inventory_sync:{...body.inventory_sync,scope:'batch',material_codes:codes}};
-        }
+        writeSyncMeta('full',[]);
+        body={...body,inventory_sync:{...body.inventory_sync,scope:'full',material_codes:[]}};
       }
 
       if(req.method==='GET'&&req.path==='/api/worker/preview'&&body&&body.inventory_sync){
