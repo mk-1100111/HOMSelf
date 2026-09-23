@@ -19,6 +19,7 @@ if errorlevel 1 (
 echo.
 echo HOMSelf 회사 PC 업데이트를 시작합니다.
 echo worker\config.json, worker\selectors.json, worker\runtime, worker\.venv 는 Git 관리 대상이 아니므로 유지됩니다.
+echo Git 관리 프로그램 파일은 원격 %BRANCH% 기준으로 자동 복구/덮어쓰기됩니다.
 if "%AUTO_MODE%"=="0" echo 실행 중인 HOMSelf 자동불출 창이 있다면 먼저 Ctrl+C로 종료한 뒤 업데이트하세요.
 echo.
 
@@ -42,28 +43,10 @@ if not exist ".git\" (
   git fetch origin "%BRANCH%"
   if errorlevel 1 goto failed
 
-  git diff --quiet
-  if errorlevel 1 (
-    echo.
-    echo [중단] Git 관리 파일에 회사 PC 로컬 수정사항이 있습니다.
-    echo 안전을 위해 자동 덮어쓰지 않습니다.
-    echo 아래 git status 결과를 확인하세요.
-    git status --short
-    if "%AUTO_MODE%"=="0" pause
-    exit /b 2
-  )
-
-  git diff --cached --quiet
-  if errorlevel 1 (
-    echo.
-    echo [중단] Git에 스테이징된 로컬 수정사항이 있습니다.
-    git status --short
-    if "%AUTO_MODE%"=="0" pause
-    exit /b 2
-  )
-
-  git pull --ff-only origin "%BRANCH%"
+  echo Git 관리 파일을 원격 %BRANCH% 버전으로 동기화합니다.
+  git reset --hard "origin/%BRANCH%"
   if errorlevel 1 goto failed
+  git branch --set-upstream-to="origin/%BRANCH%" "%BRANCH%" >nul 2>nul
 )
 
 echo.
