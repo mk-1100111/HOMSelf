@@ -347,6 +347,7 @@ class HomsAdapter:
         self.show_homs()
         self.driver.get(self.p['stock_url'])
 
+        self._select_visible('//*[@id="srcDisplayYn"]','전체')
         self.fill(self.p['stock_search_css'], item['material_code'])
         self.unique(self.p['stock_query_xpath'], True).click()
 
