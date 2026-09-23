@@ -17,9 +17,10 @@ test('company worker launchers auto-update before starting worker',()=>{
   }
 });
 
-test('root updater supports noninteractive auto mode and fast-forward pull',()=>{
+test('root updater supports noninteractive auto mode and force-syncs tracked files',()=>{
   assert.match(updater,/if \/I "%~1"=="--auto" set "AUTO_MODE=1"/);
   assert.match(updater,/git fetch origin "%BRANCH%"/);
-  assert.match(updater,/git pull --ff-only origin "%BRANCH%"/);
+  assert.match(updater,/git reset --hard "origin\/%BRANCH%"/);
+  assert.match(updater,/git branch --set-upstream-to="origin\/%BRANCH%" "%BRANCH%"/);
   assert.match(updater,/if "%AUTO_MODE%"=="0" pause/);
 });
