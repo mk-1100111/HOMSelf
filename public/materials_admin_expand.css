@@ -1,9 +1,11 @@
-.manage-card{position:relative}
-.manage-expand-toggle{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:8px auto 0;padding:0;border:1px solid #d6dee8;border-radius:999px;background:#f7f9fc;color:#536274;cursor:pointer;font-family:system-ui,sans-serif;font-size:1rem;line-height:1;box-shadow:0 1px 4px rgba(22,37,59,.08)}
-.manage-expand-toggle:hover{background:#eef3f8}
+.manage-expand-line{display:flex;align-items:center;gap:3px;min-width:0;width:100%}
+.manage-expand-line h3,.manage-expand-line .manage-meta{min-width:0;flex:1 1 auto}
+.manage-expand-line .manage-meta{margin-right:0}
+.manage-expand-toggle{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:auto;height:auto;margin:0;padding:0 1px;border:0;border-radius:0;background:transparent;color:#667487;cursor:pointer;font-family:system-ui,sans-serif;font-size:.9rem;line-height:1;box-shadow:none}
+.manage-expand-toggle:hover{background:transparent;color:#26384f}
 .manage-expand-toggle:focus-visible{outline:2px solid #86b7fe;outline-offset:2px}
 .manage-expand-toggle span{display:block;transform:translateY(-1px)}
-.manage-card.is-expanded h3,.manage-card.is-expanded .manage-meta{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;overflow-wrap:anywhere}
-.manage-card.is-expanded h3{line-height:1.28}
-.manage-card.is-expanded .manage-meta{line-height:1.45}
-@media(max-width:650px){.manage-expand-toggle{width:26px;height:26px;margin-top:6px;font-size:.9rem}}
+.manage-expand-line h3.is-expanded-text,.manage-expand-line .manage-meta.is-expanded-text{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-word;overflow-wrap:anywhere}
+.manage-expand-line h3.is-expanded-text{line-height:1.28}
+.manage-expand-line .manage-meta.is-expanded-text{line-height:1.45}
+@media(max-width:650px){.manage-expand-line{gap:2px}.manage-expand-toggle{font-size:.82rem}}
