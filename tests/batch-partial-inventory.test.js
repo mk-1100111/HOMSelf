@@ -5,7 +5,7 @@ const os=require('node:os');
 const path=require('node:path');
 const {createApp}=require('../app');
 
-test('batch finish requests one full HOMS inventory refresh',async()=>{
+test('batch finish requests one full HOMS inventory refresh and zeros missing materials',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-batch-stock-'));
   const catalogPath=path.join(dir,'catalog.json');
   const stockPath=path.join(dir,'stock.json');
@@ -91,19 +91,20 @@ test('batch finish requests one full HOMS inventory refresh',async()=>{
     response=await fetch(base+'/api/worker/inventory-sync',{
       method:'POST',headers:workerHeaders,
       body:JSON.stringify({request_id:finished.inventory_sync.request_id,items:[
-        {material_code:codeA,material_name:'A 자재',specification:'',stock_quantity:7},
-        {material_code:codeB,material_name:'B 자재',specification:'',stock_quantity:19}
+        {material_code:codeA,material_name:'A 자재',specification:'',stock_quantity:7}
       ]})
     });
     assert.equal(response.status,200);
+    const syncBody=await response.json();
+    assert.equal(syncBody.count,2);
 
     const kiosk=await(await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).json();
     const itemA=kiosk.materials.find(item=>item.material_code===codeA);
     const itemB=kiosk.materials.find(item=>item.material_code===codeB);
     assert.equal(itemA.stock_quantity,7);
     assert.equal(itemA.available_stock,7);
-    assert.equal(itemB.stock_quantity,19);
-    assert.equal(itemB.available_stock,19);
+    assert.equal(itemB.stock_quantity,0);
+    assert.equal(itemB.available_stock,0);
   }finally{
     await new Promise(resolve=>server.close(resolve));
     store.close();
@@ -112,7 +113,7 @@ test('batch finish requests one full HOMS inventory refresh',async()=>{
 });
 
 
-test('empty batch inventory sync completes while empty full sync stays blocked',async()=>{
+test('empty batch sync stays empty while empty full sync zeros all catalog materials',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'homself-empty-batch-sync-'));
   const catalogPath=path.join(dir,'catalog.json');
   fs.writeFileSync(catalogPath,JSON.stringify({
@@ -156,7 +157,13 @@ test('empty batch inventory sync completes while empty full sync stays blocked',
       method:'POST',headers:workerHeaders,
       body:JSON.stringify({request_id:'empty-full-request',items:[]})
     });
-    assert.equal(response.status,400);
+    assert.equal(response.status,200);
+    body=await response.json();
+    assert.equal(body.status,'completed');
+    assert.equal(body.count,1);
+
+    const stock=store.db.prepare('SELECT stock_quantity FROM material_stock WHERE material_code=?').get('10000000001');
+    assert.equal(stock.stock_quantity,0);
   }finally{
     await new Promise(resolve=>server.close(resolve));
     store.close();
