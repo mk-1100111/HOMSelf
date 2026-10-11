@@ -18,3 +18,8 @@ main{max-width:1700px;margin:0 auto;padding:24px 22px 50px}.status-card,.request
 @media(max-width:1180px){.board-grid{grid-template-columns:1fr}.approval-panel{position:static;max-height:none}.approval-sheet{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.approval-manager-group{margin-bottom:0}.approval-item{margin-bottom:8px}}
 @media(max-width:900px){.topbar{grid-template-columns:auto minmax(0,1fr) auto;gap:12px}.pin-form{grid-column:1/-1;width:100%;justify-content:flex-end}.status-main,.status-sub{align-items:stretch;flex-direction:column}.primary-actions{width:100%}.release-button,.bulk-approve-button,.sync-button{flex:1;min-width:0}.request-table-wrap{max-height:none}}
 @media(max-width:650px){.topbar{padding:10px 12px;gap:8px}.pin-form input{width:118px}.pin-form button{padding:0 11px}.topbar-logout{height:42px;padding:0 11px}main{padding:14px 9px}.status-card,.request-panel,.approval-panel{border-radius:13px;padding:16px 13px}.primary-actions{flex-direction:column}.approval-sheet{grid-template-columns:1fr}th,td{padding:10px 9px}.decision-button{min-width:58px;padding:8px 9px}.manager-group-toggle{padding:10px 9px}.material-cell{min-width:230px}.cleanup-list-button{padding:8px 13px}}
+
+/* Keep request timestamps intact when the issuance queue grows. */
+.request-table-wrap table th:first-child,
+.request-table-wrap table td:first-child{white-space:nowrap;min-width:145px;word-break:keep-all;overflow-wrap:normal}
+.request-table-wrap table{min-width:max-content}
