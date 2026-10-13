@@ -22,6 +22,11 @@ main{max-width:1700px;margin:0 auto;padding:24px 22px 50px}.status-card,.request
 /* Request list: constrain columns to the panel instead of growing a horizontal scrollbar. */
 .request-table-wrap{overflow-x:hidden;overflow-y:auto}
 .request-table-wrap table{width:100%;min-width:0;table-layout:fixed}
+.request-table-wrap .request-col-time{width:16%}
+.request-table-wrap .request-col-material{width:38%}
+.request-table-wrap .request-col-quantity{width:7%}
+.request-table-wrap .request-col-status{width:12%}
+.request-table-wrap .request-col-actions{width:27%}
 .request-table-wrap .request-row td{min-width:0;padding:11px 7px}
 .request-table-wrap .request-row td:nth-child(1){width:16%}
 .request-table-wrap .request-row td:nth-child(2){width:38%}
