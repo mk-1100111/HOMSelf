@@ -27,20 +27,20 @@ main{max-width:1700px;margin:0 auto;padding:24px 22px 50px}.status-card,.request
 .request-table-wrap .request-col-quantity{width:7%}
 .request-table-wrap .request-col-status{width:12%}
 .request-table-wrap .request-col-actions{width:27%}
-.request-table-wrap .request-row td{min-width:0;padding:11px 7px}
+.request-table-wrap .request-row td{min-width:0}
 .request-table-wrap .request-row td:nth-child(1){width:16%}
 .request-table-wrap .request-row td:nth-child(2){width:38%}
 .request-table-wrap .request-row td:nth-child(3){width:7%}
 .request-table-wrap .request-row td:nth-child(4){width:12%}
 .request-table-wrap .request-row td:nth-child(5){width:27%}
-.request-time-cell{white-space:nowrap;word-break:keep-all;font-family:system-ui,sans-serif;font-size:var(--admin-xs);font-variant-numeric:tabular-nums;color:#536171;line-height:1.4}
+.request-time-cell{white-space:nowrap;word-break:keep-all;font-variant-numeric:tabular-nums;line-height:1.4}
 .request-date,.request-clock{display:block}
-.request-clock{color:#8793a2;font-size:.94em}
+.request-clock{color:#8793a2}
 .request-table-wrap .material-cell{min-width:0}
 .request-table-wrap .material-detail{min-width:0;max-width:100%}
-.request-table-wrap .status-pill{max-width:100%;padding:5px 7px;font-size:var(--admin-xs)}
+.request-table-wrap .status-pill{max-width:100%}
 .request-table-wrap .decision-cell{min-width:0;white-space:normal}
-.request-table-wrap .decision-cell button{min-width:0;max-width:100%;margin:2px;padding:7px 8px;font-size:var(--admin-xs)}
+.request-table-wrap .decision-cell button{max-width:100%}
 .request-table-wrap .manager-group-toggle{min-width:0}
 .request-table-wrap .manager-group-toggle strong{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .request-table-wrap .manager-group-summary{flex-shrink:0}
@@ -48,7 +48,7 @@ main{max-width:1700px;margin:0 auto;padding:24px 22px 50px}.status-card,.request
   .request-table-wrap table,.request-table-wrap tbody{display:block;width:100%}
   .request-table-wrap .manager-group-row{display:block;width:100%}
   .request-table-wrap .manager-group-row td{display:block;width:100%}
-  .request-table-wrap .request-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"received quantity state" "material material material" "decision decision decision";gap:6px 10px;align-items:center;padding:11px 12px;border-bottom:1px solid #e9edf2}
+  .request-table-wrap .request-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"received quantity state" "material material material" "decision decision decision";gap:6px 10px;align-items:center;padding:13px 14px;border-bottom:1px solid #e9edf2}
   .request-table-wrap .request-row td{display:block;width:auto!important;min-width:0;padding:0;border:0}
   .request-table-wrap .request-row td:nth-child(1){grid-area:received}
   .request-table-wrap .request-row td:nth-child(2){grid-area:material}
@@ -56,8 +56,6 @@ main{max-width:1700px;margin:0 auto;padding:24px 22px 50px}.status-card,.request
   .request-table-wrap .request-row td:nth-child(3)::before{content:"수량 ";color:#7b8795;font-size:var(--admin-xs)}
   .request-table-wrap .request-row td:nth-child(4){grid-area:state}
   .request-table-wrap .request-row td:nth-child(5){grid-area:decision;display:flex;gap:8px}
-  .request-table-wrap .decision-cell button{flex:1 1 0;margin:0;min-width:0;padding:8px 6px}
-  .request-table-wrap .material-title{font-size:var(--admin-md)}
-  .request-table-wrap .material-meta,.request-table-wrap .material-homs-name{font-size:var(--admin-xs)}
+  .request-table-wrap .decision-cell button{flex:1 1 0;min-width:0}
   .request-table-wrap .manager-group-toggle{padding:10px}
 }
