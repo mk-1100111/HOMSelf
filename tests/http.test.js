@@ -40,6 +40,14 @@ test('restores last stock snapshot before Worker starts',async()=>{
     assert.equal(adminItem.available_stock,item.available_stock);
     assert.equal(adminItem.stock_synced_at,item.stock_synced_at);
     assert.equal(adminItem.specification,item.specification);
+
+    const syncStateResponse=await fetch(base+'/api/admin/inventory-sync-state',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}});
+    assert.equal(syncStateResponse.status,200);
+    const lightweight=await syncStateResponse.json();
+    assert.deepEqual(Object.keys(lightweight),['inventory_sync']);
+    assert.ok(lightweight.inventory_sync);
+    const unauthorizedState=await fetch(base+'/api/admin/inventory-sync-state',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});
+    assert.equal(unauthorizedState.status,401);
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
