@@ -179,7 +179,11 @@ function createApp(config = process.env) {
   app.get('/api/catalog/sync-state',auth('KIOSK'),(req,res)=>res.json(kioskRefreshState()));
   app.get('/api/catalog',auth('KIOSK'),(req,res)=>res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res)=>res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
-  app.get('/api/admin/overview',auth('ADMIN'),(req,res)=>res.json({...store.overview(),inventory_sync:inventoryState()}));
+  // Keep large approval lists out of routine status polling.
+  const adminOverview=()=>({...store.overview(),inventory_sync:inventoryState()});
+  const overviewRevision=data=>crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0,24);
+  app.get('/api/admin/overview',auth('ADMIN'),(req,res)=>{const data=adminOverview();res.json({...data,revision:overviewRevision(data)});});
+  app.get('/api/admin/overview-revision',auth('ADMIN'),(req,res)=>{const data=adminOverview();res.json({revision:overviewRevision(data)});});
   // Lightweight endpoint for inventory sync monitoring.
   app.get('/api/admin/inventory-sync-state',auth('ADMIN'),(req,res)=>res.json({inventory_sync:inventoryState()}));
   app.get('/api/admin/database',auth('ADMIN'),(req,res)=>res.json(store.inspection()));
