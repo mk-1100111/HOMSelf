@@ -180,6 +180,8 @@ function createApp(config = process.env) {
   app.get('/api/catalog',auth('KIOSK'),(req,res)=>res.json(kioskCatalog()));
   app.post('/api/requests',auth('KIOSK'),(req,res)=>res.status(201).json(store.submit(req.body,req.get('Idempotency-Key'))));
   app.get('/api/admin/overview',auth('ADMIN'),(req,res)=>res.json({...store.overview(),inventory_sync:inventoryState()}));
+  // Lightweight endpoint for inventory sync monitoring.
+  app.get('/api/admin/inventory-sync-state',auth('ADMIN'),(req,res)=>res.json({inventory_sync:inventoryState()}));
   app.get('/api/admin/database',auth('ADMIN'),(req,res)=>res.json(store.inspection()));
   app.get('/api/admin/events/:id',auth('ADMIN'),(req,res)=>res.json(store.db.prepare('SELECT * FROM events WHERE item_id=? ORDER BY id').all(req.params.id)));
   app.post('/api/admin/pause',auth('ADMIN'),(req,res)=>res.json(store.pause(req.body.paused)));
