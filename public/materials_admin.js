@@ -239,7 +239,7 @@ async function watchInventorySync(){
   if(inventorySyncWatchBusy||document.hidden||!token)return;
   inventorySyncWatchBusy=true;
   try{
-    const overview=await api('overview');
+    const overview=await api('inventory-sync-state');
     const state=overview.inventory_sync||{};
     const completedAt=Number(state.completed_at||0);
     if(inventorySyncCompletedAt===null){
@@ -259,5 +259,5 @@ async function watchInventorySync(){
 $('search').oninput=render;
 $('logout').onclick=authLost;
 load().catch(e=>$('status').textContent=e.message);
-setInterval(()=>watchInventorySync().catch(()=>{}),1000);
+setInterval(()=>watchInventorySync().catch(()=>{}),10000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)watchInventorySync().catch(()=>{});});

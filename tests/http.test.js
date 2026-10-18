@@ -40,6 +40,18 @@ test('restores last stock snapshot before Worker starts',async()=>{
     assert.equal(adminItem.available_stock,item.available_stock);
     assert.equal(adminItem.stock_synced_at,item.stock_synced_at);
     assert.equal(adminItem.specification,item.specification);
+
+    const syncStateResponse=await fetch(base+'/api/admin/inventory-sync-state',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}});
+    assert.equal(syncStateResponse.status,200);
+    const lightweight=await syncStateResponse.json();
+    assert.deepEqual(Object.keys(lightweight),['inventory_sync']);
+    assert.ok(lightweight.inventory_sync);
+    const unauthorizedState=await fetch(base+'/api/admin/inventory-sync-state',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});
+    assert.equal(unauthorizedState.status,401);
+    const revision=await(await fetch(base+'/api/admin/overview-revision',{headers:{Authorization:'Bearer '+cfg.ADMIN_TOKEN}})).json();
+    assert.match(revision.revision,/^[0-9a-f]{24}$/);
+    assert.deepEqual(Object.keys(revision),['revision']);
+    assert.equal((await fetch(base+'/api/admin/overview-revision',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}})).status,401);
   }finally{await new Promise(resolve=>server.close(resolve));store.close();fs.rmSync(dir,{recursive:true});}
 });
 
@@ -157,9 +169,13 @@ test('HTTP auth, approval sheet workflow, schema and EJS routes',async()=>{
     const preview=await(await fetch(base+'/api/worker/preview',{headers:{Authorization:'Bearer '+cfg.WORKER_TOKEN}})).json();assert.deepEqual(preview.items,[]);
     const catalogResponse=await fetch(base+'/api/catalog',{headers:{Authorization:'Bearer '+cfg.KIOSK_TOKEN}});assert.equal(catalogResponse.status,200);
     const catalog=await catalogResponse.json();
+    const revisionBefore=await(await fetch(base+'/api/admin/overview-revision',{headers:adminHeaders})).json();
     const requestBody={manager_name:catalog.managers[0],items:[{material_code:catalog.materials[0].material_code,quantity:catalog.materials[0].material_unit}]};
     const created=await fetch(base+'/api/requests',{method:'POST',headers:kioskHeaders,body:JSON.stringify(requestBody)});assert.equal(created.status,201);
     let overview=await(await fetch(base+'/api/admin/overview',{headers:adminHeaders})).json();assert.equal(overview.pending_waiting,1);assert.equal(overview.approval_sheet.length,0);
+    const revisionAfter=await(await fetch(base+'/api/admin/overview-revision',{headers:adminHeaders})).json();
+    assert.notEqual(revisionAfter.revision,revisionBefore.revision);
+    assert.equal(overview.revision,revisionAfter.revision);
     const approved=await(await fetch(base+'/api/admin/approve-all',{method:'POST',headers:adminHeaders,body:'{}'})).json();assert.equal(approved.count,1);
     overview=await(await fetch(base+'/api/admin/overview',{headers:adminHeaders})).json();assert.equal(overview.approval_sheet.length,1);
     const backup=await fetch(base+'/api/admin/backup',{headers:adminHeaders});assert.equal(Buffer.from(await backup.arrayBuffer()).subarray(0,15).toString(),'SQLite format 3');

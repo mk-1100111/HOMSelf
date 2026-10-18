@@ -84,8 +84,10 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue(waits)
     def test_batch_processes_all_captured_items(self):
         api=FakeAPI(items=[ITEM,{**ITEM,'id':'second','attempt_id':'attempt-2'}]);adapter=FakeAdapter()
+        sleeps=[]
         with patch('builtins.input',side_effect=AssertionError('unexpected input')):
-            run_loop(api,adapter,self.journal,sleep=lambda _:None,stop=lambda:adapter.clicks==2)
+            run_loop(api,adapter,self.journal,poll_seconds=2,sleep=lambda seconds:sleeps.append(seconds),stop=lambda:adapter.clicks==2)
+        self.assertIn(2,sleeps)
         self.assertEqual(self.journal.db.execute("SELECT count(*) FROM attempts WHERE phase='completed'").fetchone()[0],2)
     def test_homs_session_failure_waits_and_recovers(self):
         api=FakeAPI(items=[ITEM]);adapter=FakeAdapter();checks={'count':0};sleeps=[]
@@ -100,7 +102,9 @@ class SafetyTests(unittest.TestCase):
     def test_idle_without_batch_never_claims(self):
         api=FakeAPI(items=[ITEM]);api.get=lambda _:{'paused':True,'batch_active':False,'batch_remaining':0,'worker_protocol':3,'blocked':None,'items':[]}
         adapter=FakeAdapter();ticks=[]
-        run_loop(api,adapter,self.journal,sleep=lambda _:ticks.append(1),stop=lambda:len(ticks)==2)
+        run_loop(api,adapter,self.journal,poll_seconds=2,sleep=lambda seconds:ticks.append(seconds),stop=lambda:len(ticks)==2)
+        self.assertEqual(ticks,[20,20])
+        self.assertEqual(api.calls.count('heartbeat'),1)
         self.assertEqual(adapter.clicks,0);self.assertNotIn('claim',api.calls)
     def test_empty_active_batch_finishes(self):
         api=FakeAPI();adapter=FakeAdapter();ticks=[]

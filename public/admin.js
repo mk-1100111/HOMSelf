@@ -6,6 +6,7 @@ const $=id=>document.getElementById(id);
 const collapsedRequestManagers=new Set();
 const collapsedApprovalManagers=new Set();
 let latestOverview=null;
+let latestOverviewRevision=null;
 let materialCatalog=new Map();
 let materialCatalogLoadedAt=0;
 function message(text){$('message').textContent=text;}
@@ -40,11 +41,21 @@ function renderRequestTable(data,currentBatchIds){const body=$('items');body.rep
 function currentBatchIds(data){return new Set((data.approval_sheet||[]).filter(item=>item.current_batch).map(item=>item.id));}
 function updateCleanupButton(data){const button=$('cleanup-list');if(!button)return;const count=(data.items||[]).filter(item=>cleanableItem(item)&&!cleanedItemIds.has(item.id)).length;button.disabled=count<1;button.title=count>0?'완료/반려/확인 필요 '+count+'건을 요청 목록에서 숨깁니다.':'정리할 완료/반려/확인 필요 항목이 없습니다.';}
 function cleanupRequestList(){if(!latestOverview)return;const targets=(latestOverview.items||[]).filter(item=>cleanableItem(item)&&!cleanedItemIds.has(item.id));if(!targets.length){message('정리할 완료/반려/확인 필요 항목이 없습니다.');return;}for(const item of targets)cleanedItemIds.add(item.id);saveCleanedItemIds();renderRequestTable(latestOverview,currentBatchIds(latestOverview));updateCleanupButton(latestOverview);message('완료/반려/확인 필요 '+targets.length+'건을 요청 목록에서 정리했습니다.');}
-async function refreshData(){const data=await(await api('overview')).json();latestOverview=data;await ensureMaterialCatalog().catch(()=>{});const syncState=data.inventory_sync||{status:'idle'};$('controls').hidden=false;if(window.homselfAdminNavShow)window.homselfAdminNavShow();if(data.batch_active){$('run-state').textContent='일괄 불출 진행 중';$('queue-state').textContent='현재 배치 남은 '+data.batch_remaining+'건 · 다음 배치 승인 '+data.approved_waiting+'건';}else{$('run-state').textContent='승인 선택 대기';$('queue-state').textContent='접수 '+data.pending_waiting+'건 · 승인 시트 '+(data.approval_sheet||[]).length+'건';}$('bulk-approve').disabled=data.pending_waiting<1;$('bulk-approve').textContent=data.pending_waiting>0?'접수 '+data.pending_waiting+'건 일괄승인':'일괄승인';$('start-batch').disabled=data.batch_active||data.approved_waiting<1||syncState.status==='requested';$('start-batch').textContent=data.batch_active?'불출 진행 중':syncState.status==='requested'?'재고 동기화 대기':'승인 '+data.approved_waiting+'건 일괄불출';$('worker-state').textContent=data.worker?'회사 PC 마지막 응답 '+new Date(data.worker.last_seen).toLocaleTimeString():'회사 PC 응답 기록 없음';applySyncState(data);renderApprovalSheet(data);renderRequestTable(data,currentBatchIds(data));updateCleanupButton(data);message('마지막 갱신 '+new Date().toLocaleTimeString());}
+async function refreshData(){const data=await(await api('overview')).json();latestOverviewRevision=data.revision||null;latestOverview=data;await ensureMaterialCatalog().catch(()=>{});const syncState=data.inventory_sync||{status:'idle'};$('controls').hidden=false;if(window.homselfAdminNavShow)window.homselfAdminNavShow();if(data.batch_active){$('run-state').textContent='일괄 불출 진행 중';$('queue-state').textContent='현재 배치 남은 '+data.batch_remaining+'건 · 다음 배치 승인 '+data.approved_waiting+'건';}else{$('run-state').textContent='승인 선택 대기';$('queue-state').textContent='접수 '+data.pending_waiting+'건 · 승인 시트 '+(data.approval_sheet||[]).length+'건';}$('bulk-approve').disabled=data.pending_waiting<1;$('bulk-approve').textContent=data.pending_waiting>0?'접수 '+data.pending_waiting+'건 일괄승인':'일괄승인';$('start-batch').disabled=data.batch_active||data.approved_waiting<1||syncState.status==='requested';$('start-batch').textContent=data.batch_active?'불출 진행 중':syncState.status==='requested'?'재고 동기화 대기':'승인 '+data.approved_waiting+'건 일괄불출';$('worker-state').textContent=data.worker?'회사 PC 마지막 응답 '+new Date(data.worker.last_seen).toLocaleTimeString():'회사 PC 응답 기록 없음';applySyncState(data);renderApprovalSheet(data);renderRequestTable(data,currentBatchIds(data));updateCleanupButton(data);message('마지막 갱신 '+new Date().toLocaleTimeString());}
 $('logout').onclick=()=>{authLost();};
 $('cleanup-list').onclick=cleanupRequestList;
 $('inventory-sync').onclick=async()=>{if(!confirm('회사 PC HOMS 재고조회 화면에서 현재 재고를 다시 동기화할까요?'))return;const button=$('inventory-sync');button.disabled=true;try{await api('inventory-sync',{});message('회사 PC에 재고 동기화를 요청했습니다.');await refresh();}catch(e){message(e.message);button.disabled=false;}};
 $('bulk-approve').onclick=async()=>{const count=parseInt(($('bulk-approve').textContent.match(/\d+/)||['0'])[0],10);if(count<1)return;if(!confirm('현재 접수 상태 '+count+'건을 모두 승인 시트에 올릴까요?\n이미 반려한 항목은 변경하지 않습니다.'))return;try{const result=await(await api('approve-all',{})).json();message(result.count+'건을 일괄 승인했습니다.');await refresh();}catch(e){message(e.message);}};
 $('start-batch').onclick=async()=>{const count=parseInt(($('start-batch').textContent.match(/\d+/)||['0'])[0],10);if(count<1)return;if(!confirm('승인 시트의 '+count+'건을 일괄 불출할까요?\n시작 후 새로 승인한 요청은 다음 배치로 넘어갑니다.'))return;try{const result=await(await api('batch/start',{})).json();message(result.count+'건 일괄 불출을 시작했습니다.');await refresh();}catch(e){message(e.message);}};
-setInterval(()=>{if(token&&!document.hidden)refresh().catch(e=>message(e.message));},2000);
+let checkingOverviewRevision=false;
+async function checkOverviewRevision(){
+  if(!token||document.hidden||refreshing||checkingOverviewRevision)return;
+  checkingOverviewRevision=true;
+  try{
+    const latest=await(await api('overview-revision')).json();
+    if(!latestOverview||latest.revision!==latestOverviewRevision)await refresh();
+  }finally{checkingOverviewRevision=false;}
+}
+setInterval(()=>checkOverviewRevision().catch(e=>message(e.message)),5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkOverviewRevision().catch(e=>message(e.message));});
 refresh().catch(e=>message(e.message));

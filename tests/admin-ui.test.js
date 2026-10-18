@@ -56,7 +56,9 @@ test('completed rejected decision includes rejected batch and HOMS missing resul
 test('request list removes repeated manager column and shows detailed material options',()=>{
   assert.match(adminView,/id="cleanup-list"[^>]*>정리<\/button>/);
   assert.doesNotMatch(adminView,/<th>매니저<\/th>/);
-  assert.match(adminView,/<th>자재 \/ 옵션<\/th>/);
+  // Request headers were intentionally removed from the production table.
+  assert.doesNotMatch(adminView,/<thead[\s>]/);
+  assert.match(adminView,/<tbody id="items"><\/tbody>/);
   assert.match(adminSource,/옵션 · /);
   assert.match(adminSource,/상품코드 /);
   assert.match(adminSource,/불출단위 /);

@@ -117,18 +117,24 @@ def execute_inventory_sync(api,adapter,sync_state,cfg):
 def run_loop(api,adapter,journal,cfg=None,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
     cfg=cfg or {}
     previous=None;last_keepalive=time.monotonic();last_server_boot_id=None;pending_server_restore=False;last_restore_attempt=0.0;session_error=None
+    last_heartbeat_at=None
     while not stop():
         try:
-            api.post('heartbeat',{'mode':'live'});state=api.get('preview')
+            # Refresh Worker presence once per minute, not on every poll.
+            heartbeat_now=time.monotonic()
+            if last_heartbeat_at is None or heartbeat_now-last_heartbeat_at>=60:
+                api.post('heartbeat',{'mode':'live'})
+                last_heartbeat_at=heartbeat_now
+            state=api.get('preview')
         except HTTPFailure as error:
             if error.status in (401,403):raise
             print('대기 중 서버 응답 오류. 불출 없이 연결을 재확인합니다:',type(error).__name__,str(error),flush=True)
             if once:raise
-            sleep(min(30,poll_seconds*2));continue
+            sleep(max(20,min(60,poll_seconds*4)));continue
         except (ConnectionFailure,TimeoutError,OSError) as error:
             print('대기 중 서버 연결 끊김. 불출 없이 연결을 재확인합니다:',type(error).__name__,str(error),flush=True)
             if once:raise
-            sleep(min(30,poll_seconds*2));continue
+            sleep(max(20,min(60,poll_seconds*4)));continue
         if state.get('worker_protocol')!=3:raise RuntimeError('서버/회사 PC 코드 버전이 맞지 않습니다. 최신 worker를 다시 받아주세요.')
 
         server_boot_id=state.get('server_boot_id')
@@ -229,7 +235,8 @@ def run_loop(api,adapter,journal,cfg=None,poll_seconds=5,once=False,sleep=time.s
             except Exception:pass
             previous=None
         if once:return
-        sleep(poll_seconds)
+        # Idle state uses slower polling; active releases stay responsive.
+        sleep(max(20,poll_seconds) if idle else (max(10,poll_seconds) if state.get('blocked') else poll_seconds))
 
 def run_supervised_loop(api,adapter,journal,cfg,poll_seconds=5,once=False,sleep=time.sleep,stop=lambda:False):
     """Keep the live Chrome/HOMS session alive across unexpected monitor-loop errors."""
