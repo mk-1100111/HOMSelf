@@ -22,7 +22,7 @@ $(document).ready(async function(){
 });
 function showMaterialList(managerName){window.location.href='material_list?managerName='+encodeURIComponent(managerName);}
 let touchStartTime,isDragging=false;document.addEventListener('contextmenu',e=>e.preventDefault());document.addEventListener('touchstart',()=>{touchStartTime=Date.now();isDragging=false;});document.addEventListener('touchmove',()=>{isDragging=true;});document.addEventListener('touchend',e=>{if(!isDragging&&Date.now()-touchStartTime>300){e.preventDefault();e.target.click();}});
-setInterval(()=>fetch('/ping',{method:'GET',cache:'no-store'}).catch(()=>location.reload()),300000);setInterval(()=>location.reload(),3600000);
+setInterval(()=>location.reload(),3600000);
 </script>
 <script src="/public/request-client.js"></script>
 </body></html>
